@@ -5,3 +5,5 @@
 *.Rproj
 docs
 inst/doc
+node_modules/
+coverage/
