@@ -7,3 +7,11 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+^srcts$
+^node_modules$
+^package(-lock)?\.json$
+^\.npmrc$
+^tsconfig(\.[a-z]+)?\.json$
+^eslint\.config\.ts$
+^vitest\.config\.ts$
+^coverage$
