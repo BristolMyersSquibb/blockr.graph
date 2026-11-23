@@ -19,7 +19,8 @@ Roxygen: list(markdown = TRUE)
 Imports:
     blockr.core (>= 0.2.0)
 Suggests:
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    yyjsonr
 Remotes:
     BristolMyersSquibb/blockr.core@js-state
 Config/testthat/edition: 3
