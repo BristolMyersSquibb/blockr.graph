@@ -13,7 +13,7 @@ new_graph_plugin(
 }
 \arguments{
 \item{positions}{Where the node of each block sits on the canvas, by the
-block's id, each a list of the numbers \code{x} and \code{y}, as
+block's id, each a list or a named vector of the numbers \code{x} and \code{y}, as
 \code{list(a = list(x = 120, y = 80))}.}
 
 \item{layout}{The layout, as \code{\link[=graph_layout]{graph_layout()}} makes it.}
