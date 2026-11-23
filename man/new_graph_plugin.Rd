@@ -37,6 +37,7 @@ The DAG keeps its state in the board, in three parts:
 \item The positions, in \code{positions}: where the node of each block sits on the
 canvas, by the block's id, as a point with \code{x} to the right and \code{y}
 downwards, in pixels of the canvas.
+A block's position is the centre of its mark.
 \item The stacks, in \code{stacks}: what the DAG keeps about a stack, by the stack's
 id, where it keeps anything.
 That is the position of a stack that holds no block, or the place among
