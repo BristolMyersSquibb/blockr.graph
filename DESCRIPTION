@@ -1,0 +1,27 @@
+Package: blockr.graph
+Title: A Directed Acyclic Graph Plugin for 'blockr'
+Version: 0.2.0
+Authors@R:
+    c(person(given = "Nicolas",
+             family = "Bennett",
+             role = c("aut", "cre"),
+             email = "nicolas@cynkra.com"),
+      person(family = "Bristol Myers Squibb",
+             role = "fnd"))
+Description: Provides a plugin that draws a 'blockr' board as a directed
+    acyclic graph in the browser. The graph shows the blocks of the board,
+    the links between them and the stacks that group them. Edits made in the
+    graph go through the command registry of 'blockr.core', as all edits of
+    the board do.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Imports:
+    blockr.core (>= 0.2.0)
+Suggests:
+    testthat (>= 3.0.0)
+Remotes:
+    BristolMyersSquibb/blockr.core@js-state
+Config/testthat/edition: 3
+URL: https://bristolmyerssquibb.github.io/blockr.graph/
+Config/roxygen2/version: 8.1.0
