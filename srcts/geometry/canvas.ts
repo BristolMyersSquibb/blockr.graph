@@ -137,12 +137,12 @@ export interface Changes {
 }
 
 // The positions that moving the node to the box sets: the block's, or for a
-// collapsed stack, those of its blocks, which move with it by one distance,
-// or for a stack that holds no block, its own.
+// stack with blocks, collapsed or expanded, those of its blocks, which move
+// with it by one distance, or for a stack that holds no block, its own.
 export function nodeChanges(canvas: Canvas, node: CanvasNode, box: Box): Changes {
   const point = { x: box.x, y: box.y };
   if (node.kind === "block") return { positions: { [node.id]: point }, points: {} };
-  if (!canvas.collapsed.has(node.id)) return { positions: {}, points: { [node.id]: point } };
+  if (canvas.points[node.id] !== undefined) return { positions: {}, points: { [node.id]: point } };
   const [dx, dy] = [box.x - node.box.x, box.y - node.box.y];
   const positions: Record<BlockId, Point> = {};
   for (const block of canvas.board.stacks[node.id]?.blocks ?? []) {

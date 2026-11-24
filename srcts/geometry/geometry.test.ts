@@ -88,6 +88,19 @@ describe("the canvas", () => {
       points: {},
     });
   });
+
+  test("moves an expanded stack's blocks with its box by one distance, and a stack without blocks alone", () => {
+    const box = expandedBox(canvas, "s1");
+    if (box === undefined) throw new Error("no box");
+    const expanded = { kind: "stack", id: "s1", box, stack: "s1" } as const;
+    expect(nodeChanges(canvas, expanded, { ...box, x: box.x + 10, y: box.y + 5 }).positions).toEqual({
+      a: { x: 10, y: 5 },
+      b: { x: 110, y: 5 },
+    });
+    const empty = canvasNodes(canvas).find((n) => n.id === "s3");
+    if (empty === undefined) throw new Error("no node");
+    expect(nodeChanges(canvas, empty, { ...empty.box, x: 510, y: 5 })).toEqual({ positions: {}, points: { s3: { x: 510, y: 5 } } });
+  });
 });
 
 describe("snapping", () => {

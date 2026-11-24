@@ -1,0 +1,456 @@
+/*
+ * The DAG's stylesheet, which the build bundles into graph.css, beside the
+ * module, where R serves it
+ * (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#its-look).
+ *
+ * - React Flow's own stylesheet comes first, from the vendor file that the
+ *   build writes of it. React Flow puts its rules in the cascade layer xyflow,
+ *   so the rules below, which no layer holds, win over them.
+ * - The DAG takes its colours from core's theme variables, as
+ *   --bc-color-border-default, and sets React Flow's own variables from them.
+ *   Each falls back to what the page's text gives, so that the DAG reads under
+ *   a frontend that sets none of them.
+ * - React Flow sets `color-scheme: light dark` on its root, so that it follows
+ *   the system's mode. The DAG follows the mode that core's board option
+ *   dark_mode switches the page to instead, which core writes on the page's
+ *   root as data-bc-theme.
+ */
+
+@import "../../flow/vendor.css";
+
+.blockr-graph {
+  --blockr-graph-surface: Canvas;
+  --blockr-graph-text: var(--bc-color-text-default, CanvasText);
+  --blockr-graph-muted: var(--bc-color-text-muted, color-mix(in oklab, currentColor 65%, transparent));
+  --blockr-graph-border: var(--bc-color-border-default, color-mix(in oklab, currentColor 25%, transparent));
+  --blockr-graph-accent: var(--bc-color-border-accent, #3b82f6);
+  --blockr-graph-raised: var(--bc-color-bg-raised, Canvas);
+  --blockr-graph-link: color-mix(in oklab, currentColor 40%, transparent);
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  outline: none;
+  color: var(--blockr-graph-text);
+  background: var(--blockr-graph-surface);
+  font-family: var(--bc-font-sans, system-ui, sans-serif);
+}
+
+/*
+ * The height of its own that the canvas takes where its element has none, as
+ * under core's basic frontend: half the window's.
+ */
+.blockr-graph[data-height="own"] {
+  height: 50vh;
+  min-height: 320px;
+}
+
+.blockr-graph .react-flow {
+  color-scheme: inherit;
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--blockr-graph-link);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--blockr-graph-accent);
+  --xy-connectionline-stroke: var(--blockr-graph-accent);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-edge-label-background-color: var(--blockr-graph-surface);
+  --xy-edge-label-color: var(--blockr-graph-text);
+  --xy-handle-background-color: var(--blockr-graph-surface);
+  --xy-handle-border-color: var(--blockr-graph-link);
+  --xy-selection-background-color: color-mix(in oklab, var(--blockr-graph-accent) 8%, transparent);
+  --xy-selection-border: 1px dashed var(--blockr-graph-accent);
+  --xy-attribution-background-color: transparent;
+}
+
+:root[data-bc-theme="dark"] .blockr-graph .react-flow {
+  color-scheme: dark;
+}
+
+:root[data-bc-theme="light"] .blockr-graph .react-flow {
+  color-scheme: light;
+}
+
+.blockr-graph .react-flow__node:focus,
+.blockr-graph .react-flow__node:focus-visible {
+  outline: none;
+}
+
+/*
+ * A block's node: its mark, with the status dot on the mark's upper right
+ * corner, and its name below it, cut at the node's width.
+ */
+.blockr-graph-block {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.blockr-graph-mark-frame {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+
+.blockr-graph-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 18px;
+  color: var(--bc-color-category-uncategorized, #999999);
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.blockr-graph-mark svg {
+  width: 1em;
+  height: 1em;
+}
+
+.blockr-graph-mark[data-category="input"] { color: var(--bc-color-category-input, #0072b2); }
+.blockr-graph-mark[data-category="transform"] { color: var(--bc-color-category-transform, #009e73); }
+.blockr-graph-mark[data-category="structured"] { color: var(--bc-color-category-structured, #56b4e9); }
+.blockr-graph-mark[data-category="plot"] { color: var(--bc-color-category-plot, #e69f00); }
+.blockr-graph-mark[data-category="table"] { color: var(--bc-color-category-table, #cc79a7); }
+.blockr-graph-mark[data-category="model"] { color: var(--bc-color-category-model, #f0e442); }
+.blockr-graph-mark[data-category="output"] { color: var(--bc-color-category-output, #d55e00); }
+.blockr-graph-mark[data-category="utility"] { color: var(--bc-color-category-utility, #cccccc); }
+
+/*
+ * A selected block shows a ring around its mark, and so does the block that
+ * has the keyboard's focus.
+ */
+.blockr-graph-block[data-selected] .blockr-graph-mark-frame,
+.react-flow__node:focus-visible .blockr-graph-mark-frame {
+  box-shadow: 0 0 0 2px var(--blockr-graph-surface), 0 0 0 4px var(--blockr-graph-accent);
+}
+
+.blockr-graph-block[data-selected] .blockr-graph-name {
+  color: var(--blockr-graph-accent);
+}
+
+/*
+ * The name, centred below the mark, as wide as it is, and cut at 160px, the
+ * widest that the DAG takes a node to be as it places blocks.
+ */
+.blockr-graph-name {
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  box-sizing: border-box;
+  max-width: 160px;
+  padding: 0 5px;
+  overflow: hidden;
+  transform: translateX(-50%);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The status dot, as the dock's card draws it: an 8px dot with a 2px ring in
+ * the colour of the canvas's surface, or a ring of 1.5px inside the dot for a
+ * block that is waiting or unevaluated.
+ * The colour of a status is core's, as --bc-color-status-failed. Each falls
+ * back to core's value of it under the light theme, which is that of the
+ * token that the table of the status dot names
+ * (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.2.7#the-status-dot).
+ */
+.blockr-graph-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+  box-shadow: 0 0 0 2px var(--blockr-graph-surface);
+}
+
+.blockr-graph-dot[data-ring] {
+  background-color: var(--blockr-graph-surface);
+  box-shadow: inset 0 0 0 1.5px currentColor, 0 0 0 2px var(--blockr-graph-surface);
+}
+
+.blockr-graph-dot[data-status="stale"] { color: var(--bc-color-status-stale, #6b7280); }
+.blockr-graph-dot[data-status="waiting"] { color: var(--bc-color-status-waiting, #d97706); }
+.blockr-graph-dot[data-status="invalid"] { color: var(--bc-color-status-invalid, #d97706); }
+.blockr-graph-dot[data-status="failed"] { color: var(--bc-color-status-failed, #dc2626); }
+.blockr-graph-dot[data-status="ready"] { color: var(--bc-color-status-ready, #16a34a); }
+.blockr-graph-dot[data-status="unevaluated"] { color: var(--bc-color-status-unevaluated, #6b7280); }
+
+/*
+ * A handle, 8px across, where the node gives it. It takes the pointer within
+ * its size and 4px around it, and never over the node's body, so that a press
+ * on the node lands on the node. While the pointer is over it, it grows and
+ * takes the accent colour. React Flow keeps its crosshair over a handle that
+ * takes links.
+ */
+.blockr-graph .blockr-graph-handle {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  transform: none;
+  pointer-events: all;
+  border: 1.5px solid var(--blockr-graph-link);
+  background-color: var(--blockr-graph-surface);
+  transition: transform 80ms ease-out;
+}
+
+.blockr-graph .blockr-graph-handle::before {
+  position: absolute;
+  inset: -4px;
+  content: "";
+}
+
+.blockr-graph .blockr-graph-handle:hover {
+  transform: scale(1.5);
+  border-color: var(--blockr-graph-accent);
+  background-color: var(--blockr-graph-accent);
+}
+
+.blockr-graph .blockr-graph-stack-handle {
+  pointer-events: none;
+  opacity: 0;
+}
+
+/*
+ * A link: a curve with an arrow at its end, and the input's name on it while
+ * the pointer is over it, or over the handle of the input that it feeds.
+ */
+.blockr-graph-arrow {
+  fill: var(--xy-edge-stroke);
+  pointer-events: none;
+}
+
+.blockr-graph .react-flow__edge.selected .blockr-graph-arrow {
+  fill: var(--blockr-graph-accent);
+}
+
+.blockr-graph .react-flow__edge:hover .react-flow__edge-path,
+.blockr-graph .react-flow__edge.blockr-graph-hovered .react-flow__edge-path {
+  stroke: var(--blockr-graph-muted);
+}
+
+.blockr-graph .react-flow__edge:hover .blockr-graph-arrow,
+.blockr-graph .react-flow__edge.blockr-graph-hovered .blockr-graph-arrow {
+  fill: var(--blockr-graph-muted);
+}
+
+.blockr-graph .react-flow__edge-textwrapper {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease-out;
+}
+
+.blockr-graph .react-flow__edge:hover .react-flow__edge-textwrapper,
+.blockr-graph .react-flow__edge.blockr-graph-hovered .react-flow__edge-textwrapper {
+  opacity: 1;
+}
+
+.blockr-graph .react-flow__edge-text {
+  font-size: 11px;
+}
+
+/*
+ * A stack: a box behind its blocks in its colour, with its name above it, or
+ * the small box of a collapsed stack or of a stack that holds no block, which
+ * holds its name and the number of its blocks.
+ */
+.blockr-graph-stack {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid var(--blockr-graph-stack-color);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--blockr-graph-stack-color) 7%, transparent);
+}
+
+.blockr-graph-stack[data-shows="empty"] {
+  border-style: dashed;
+}
+
+.blockr-graph-stack[data-selected] {
+  outline: 2px solid var(--blockr-graph-accent);
+  outline-offset: 2px;
+}
+
+.blockr-graph-stack-name {
+  position: absolute;
+  bottom: 100%;
+  left: 4px;
+  max-width: calc(100% - 8px);
+  margin-bottom: 3px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.blockr-graph-stack-title {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 0 32px 0 12px;
+  overflow: hidden;
+}
+
+.blockr-graph-stack-label {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.blockr-graph-stack-count {
+  color: var(--blockr-graph-muted);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.blockr-graph .blockr-graph-collapse {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
+.blockr-graph-stack:not([data-shows="expanded"]) .blockr-graph-collapse {
+  top: calc(50% - 10px);
+  right: 6px;
+}
+
+.blockr-graph-collapse svg[data-collapsed] {
+  transform: rotate(-90deg);
+}
+
+/*
+ * The toolbar, in a column at the canvas's top left, and the panel of search
+ * and the outline beside it.
+ */
+.blockr-graph-tools {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-height: calc(100% - 20px);
+  pointer-events: none;
+}
+
+.blockr-graph-tools > * {
+  pointer-events: auto;
+}
+
+.blockr-graph-toolbar {
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--blockr-graph-border);
+  border-radius: 8px;
+  background: var(--blockr-graph-raised);
+  box-shadow: 0 1px 3px color-mix(in oklab, CanvasText 12%, transparent);
+}
+
+.blockr-graph .blockr-graph-control {
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--blockr-graph-text);
+}
+
+.blockr-graph .blockr-graph-control[aria-expanded="true"] {
+  background: color-mix(in oklab, var(--blockr-graph-accent) 14%, transparent);
+}
+
+.blockr-graph-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.blockr-graph-search {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 280px;
+  max-height: 100%;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--blockr-graph-border);
+  border-radius: 8px;
+  background: var(--blockr-graph-raised);
+  box-shadow: 0 2px 8px color-mix(in oklab, CanvasText 14%, transparent);
+}
+
+.blockr-graph-search-heading {
+  margin: 4px 0 0;
+  color: var(--blockr-graph-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.blockr-graph-search-none {
+  margin: 0;
+  color: var(--blockr-graph-muted);
+  font-size: 13px;
+}
+
+/*
+ * The empty board's line, in the design system's style for an empty place,
+ * and why the board took no link that the user dropped, where the user
+ * dropped it.
+ */
+.blockr-graph-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  color: var(--blockr-graph-muted);
+  font-size: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.blockr-graph-refusal {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  max-width: 320px;
+  padding: 6px 10px;
+  transform: translate(8px, 8px);
+  border: 1px solid var(--bc-color-border-danger, #ef4444);
+  border-radius: 6px;
+  background: var(--blockr-graph-raised);
+  color: var(--bc-color-text-danger, #b91c1c);
+  font-size: 13px;
+  white-space: pre-wrap;
+  box-shadow: 0 2px 8px color-mix(in oklab, CanvasText 14%, transparent);
+}

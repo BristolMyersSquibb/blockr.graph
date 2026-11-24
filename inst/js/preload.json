@@ -1,5 +1,19 @@
 {
+  "graph.css": [
+    "./xyflow-e932e134.css"
+  ],
   "graph.js": [
-    "./vpsc-35683e50.js"
+    "./vpsc-35683e50.js",
+    "react-dom",
+    "react-dom/client",
+    "@blockr/core/react",
+    "react",
+    "./xyflow-82a19db7.js",
+    "react/jsx-runtime"
+  ],
+  "xyflow-82a19db7.js": [
+    "react",
+    "react/jsx-runtime",
+    "react-dom"
   ]
 }
