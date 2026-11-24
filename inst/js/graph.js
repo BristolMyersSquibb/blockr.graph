@@ -366,7 +366,7 @@ function canvasNodes(canvas) {
 function nodeChanges(canvas, node, box) {
   const point = { x: box.x, y: box.y };
   if (node.kind === "block") return { positions: { [node.id]: point }, points: {} };
-  if (!canvas.collapsed.has(node.id)) return { positions: {}, points: { [node.id]: point } };
+  if (canvas.points[node.id] !== void 0) return { positions: {}, points: { [node.id]: point } };
   const [dx, dy] = [box.x - node.box.x, box.y - node.box.y];
   const positions = {};
   for (const block of canvas.board.stacks[node.id]?.blocks ?? []) {
@@ -596,8 +596,8 @@ var layoutCommands = [
         positions: Object.fromEntries(Object.entries(changes.positions).filter(([id]) => Object.hasOwn(board.blocks, id))),
         points: Object.fromEntries(Object.entries(changes.points).filter(([id]) => board.stacks[id]?.blocks.length === 0))
       };
-      const snapped = snapChanges(canvasOf(board, state), kept, layout);
-      return { patches: [...changePatches(state, snapped, GRAPH), ...settingPatches(state, { direction, spacing }), ...emptied(state)] };
+      const snapped2 = snapChanges(canvasOf(board, state), kept, layout);
+      return { patches: [...changePatches(state, snapped2, GRAPH), ...settingPatches(state, { direction, spacing }), ...emptied(state)] };
     }
   }),
   command({
@@ -1086,18 +1086,18 @@ function startPoints(canvas, added, layout) {
   const positions = {};
   const points2 = {};
   let current = canvas;
-  const placed = [];
+  const placed2 = [];
   for (const block of added.blocks) {
     const box = boxOfBlock(canvas, block);
-    if (box !== void 0) placed.push(box);
+    if (box !== void 0) placed2.push(box);
   }
   for (const stack2 of added.stacks) {
     const point = canvas.points[stack2];
-    if (point !== void 0) placed.push(stackBoxAt(point));
+    if (point !== void 0) placed2.push(stackBoxAt(point));
   }
   const start2 = (box) => {
-    const free = offPlaced(box, placed, layout.direction, gap);
-    placed.push(free);
+    const free = offPlaced(box, placed2, layout.direction, gap);
+    placed2.push(free);
     return { x: free.x, y: free.y };
   };
   for (const block of linkOrder(canvas.board, added.blocks)) {
@@ -1177,10 +1177,10 @@ function firstRank(canvas, shape, layout, gap) {
   const last = lastBy(boxes.filter((box) => box.x - left < gap / 2), (box) => box.y + box.h / 2);
   return { x: left, y: last.y + last.h / 2 + gap + shape.h / 2, w: shape.w, h: shape.h };
 }
-function offPlaced(box, placed, direction, gap) {
+function offPlaced(box, placed2, direction, gap) {
   let moved = box;
-  for (let tries = 0; tries <= placed.length; tries++) {
-    const hit = placed.find((other) => overlaps(moved, other, gap));
+  for (let tries = 0; tries <= placed2.length; tries++) {
+    const hit = placed2.find((other) => overlaps(moved, other, gap));
     if (hit === void 0) return moved;
     moved = direction === "TB" ? { ...moved, x: hit.x + hit.w / 2 + gap + moved.w / 2 } : { ...moved, y: hit.y + hit.h / 2 + gap + moved.h / 2 };
   }
@@ -1236,7 +1236,7 @@ function afterStep(board, before, plugin) {
   const moved = new Set(
     Object.keys(board.blocks).filter((block) => !added.blocks.has(block) && !samePoint(prior?.positions[block], state.positions[block]))
   );
-  const placed = added.blocks.size + added.stacks.size === 0 ? { positions: {}, points: {} } : placeAdded(canvasOf(board, state), added, moved, state.layout);
+  const placed2 = added.blocks.size + added.stacks.size === 0 ? { positions: {}, points: {} } : placeAdded(canvasOf(board, state), added, moved, state.layout);
   const entries = {};
   const emptied2 = /* @__PURE__ */ new Set();
   for (const [id, stack2] of Object.entries(board.stacks)) {
@@ -1252,11 +1252,11 @@ function afterStep(board, before, plugin) {
   }
   const pushed = (ids, of) => [...ids].filter((id) => !of.has(id));
   return [
-    ...changePatches(state, placed, plugin),
+    ...changePatches(state, placed2, plugin),
     ...unmovedPatches(
       state,
-      pushed(Object.keys(placed.positions), added.blocks),
-      pushed(Object.keys(placed.points), added.stacks),
+      pushed(Object.keys(placed2.positions), added.blocks),
+      pushed(Object.keys(placed2.points), added.stacks),
       plugin,
       emptied2
     ),
@@ -1372,6 +1372,1215 @@ function update(delta, board, plugin) {
   ];
 }
 
+// srcts/ui/module.tsx
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
+
+// srcts/ui/graph.tsx
+import { useBoard as useBoard4 } from "@blockr/core/react";
+import { useCallback as useCallback2, useEffect as useEffect3, useLayoutEffect, useMemo as useMemo3, useRef as useRef3, useState as useState3 } from "react";
+
+// srcts/flow/index.ts
+import {
+  BaseEdge,
+  getBezierPath,
+  getViewportForBounds,
+  Handle,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow
+} from "./xyflow-82a19db7.js";
+
+// srcts/ui/canvas.tsx
+import { useBoard } from "@blockr/core/react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+
+// srcts/ui/context.ts
+import { createContext, useContext } from "react";
+var GraphContext = createContext(null);
+function useGraph() {
+  const graph = useContext(GraphContext);
+  if (graph === null) throw new Error("A component of the DAG draws outside the DAG's root.");
+  return graph;
+}
+
+// srcts/ui/ids.ts
+function blockNode2(block) {
+  return `b:${block}`;
+}
+function stackNode2(stack2) {
+  return `s:${stack2}`;
+}
+function linkEdge(link) {
+  return `l:${link}`;
+}
+function objectOf(id) {
+  const rest = id.slice(2);
+  if (id.startsWith("b:")) return { block: rest };
+  if (id.startsWith("s:")) return { stack: rest };
+  if (id.startsWith("l:")) return { link: rest };
+  return void 0;
+}
+function idOf(object2) {
+  if ("block" in object2) return blockNode2(object2.block);
+  if ("stack" in object2) return stackNode2(object2.stack);
+  if ("link" in object2) return linkEdge(object2.link);
+  return void 0;
+}
+
+// srcts/ui/elements.ts
+var HANDLE = 8;
+var HANDLE_STEP = 12;
+var DOT_REACH = 8;
+var GROWN = HANDLE * 1.5 / 2;
+var DOT_ROOM = DOT_REACH + GROWN;
+var NEXT = "next";
+var DOTS = "...";
+function elementsOf(drawing) {
+  const { canvas, registry, layout, selected, hovered, locked, spread } = drawing;
+  const { board } = canvas;
+  const held = stackOf(board);
+  const boxes = /* @__PURE__ */ new Map();
+  for (const stack2 of Object.keys(board.stacks)) {
+    const box = shownBox(canvas, stack2);
+    if (box !== void 0) boxes.set(stack2, whole(box));
+  }
+  const shown = (block) => {
+    const point = canvas.positions[block];
+    if (point === void 0 || board.blocks[block] === void 0) return void 0;
+    const stack2 = held.get(block);
+    if (stack2 === void 0 || !canvas.collapsed.has(stack2)) return { node: blockNode2(block), centre: point };
+    const box = boxes.get(stack2);
+    return box === void 0 ? void 0 : { node: stackNode2(stack2), centre: { x: box.x, y: box.y } };
+  };
+  const links = [];
+  for (const [id, link] of Object.entries(board.links)) {
+    const from = shown(link.from);
+    const to = shown(link.to);
+    if (from === void 0 || to === void 0 || from.node === to.node) continue;
+    links.push({ id, from, to, out: sideTowards(from.centre, to.centre), in: sideTowards(to.centre, from.centre) });
+  }
+  const byId = new Map(links.map((link) => [link.id, link]));
+  const stackNodes = [];
+  for (const [id, stack2] of Object.entries(board.stacks)) {
+    const box = boxes.get(id);
+    if (box === void 0) continue;
+    const shows = stack2.blocks.length === 0 ? "empty" : canvas.collapsed.has(id) ? "collapsed" : "expanded";
+    const handles = shows === "collapsed" ? stackHandles(box, links, stackNode2(id)) : [];
+    stackNodes.push({
+      id: stackNode2(id),
+      type: "stack",
+      position: { x: box.x, y: box.y },
+      width: box.w,
+      height: box.h,
+      measured: { width: box.w, height: box.h },
+      handles: handles.map(nodeHandle),
+      selected: selected.has(stackNode2(id)),
+      data: { kind: "stack", stack: id, name: stack2.name, color: stack2.color, count: stack2.blocks.length, shows, handles }
+    });
+  }
+  const nodes = [];
+  for (const [id, block] of Object.entries(board.blocks)) {
+    const point = canvas.positions[id];
+    const stack2 = held.get(id);
+    if (point === void 0 || stack2 !== void 0 && canvas.collapsed.has(stack2)) continue;
+    const entry = registry[block.registry_id];
+    const width = blockWidth(block.name);
+    const spreading = spread?.node === blockNode2(id) ? spread.side : null;
+    const handles = blockHandles({ board, id, entry, width, layout, links, byId, locked, spreading });
+    const parent = stack2 === void 0 ? void 0 : boxes.get(stack2);
+    nodes.push({
+      id: blockNode2(id),
+      type: "block",
+      position: parent === void 0 ? point : { x: point.x - (parent.x - parent.w / 2), y: point.y - (parent.y - parent.h / 2) },
+      ...parent === void 0 || stack2 === void 0 ? {} : { parentId: stackNode2(stack2) },
+      width,
+      height: BLOCK_HEIGHT,
+      measured: { width, height: BLOCK_HEIGHT },
+      handles: handles.map(nodeHandle),
+      selected: selected.has(blockNode2(id)),
+      data: { kind: "block", block: id, name: block.name, entry, handles }
+    });
+  }
+  nodes.push(...stackNodes);
+  const edges = links.map((link) => {
+    const { input } = board.links[link.id] ?? { input: "" };
+    const target = link.to.node.startsWith("b:") ? inputHandle(board, link.id) : `in-${link.in}`;
+    return {
+      id: linkEdge(link.id),
+      type: "link",
+      source: link.from.node,
+      target: link.to.node,
+      sourceHandle: `out-${link.out}`,
+      targetHandle: target,
+      selected: selected.has(linkEdge(link.id)),
+      ...hovered === link.id ? { className: "blockr-graph-hovered" } : {},
+      data: { link: link.id, label: input === "" ? placeLabel(board, link.id) : input }
+    };
+  });
+  return { nodes, edges };
+}
+function whole(box) {
+  return { ...box, w: Math.ceil(box.w), h: Math.ceil(box.h) };
+}
+function sideTowards(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "right" : "left";
+  return dy > 0 ? "bottom" : "top";
+}
+function idleSide(layout, type) {
+  if (layout.direction === "TB") return type === "target" ? "top" : "bottom";
+  return type === "target" ? "left" : "right";
+}
+function isVariadic(entry) {
+  return entry?.inputs.length === 1 && entry.inputs[0] === DOTS;
+}
+function inputHandle(board, link) {
+  return `in:${board.links[link]?.input ?? ""}#${link}`;
+}
+function placeLabel(board, link) {
+  const to = board.links[link]?.to;
+  const into = Object.entries(board.links).filter(([, other]) => other.to === to);
+  return `Input ${String(into.findIndex(([id]) => id === link) + 1)}`;
+}
+function blockHandles({ board, id, entry, width, layout, links, byId, locked, spreading }) {
+  const into = Object.entries(board.links).filter(([, link]) => link.to === id);
+  const name = (block) => board.blocks[block]?.name ?? block;
+  const wanted = [];
+  if (isVariadic(entry)) {
+    for (const [i, [link, { from, input }]] of into.entries()) {
+      const label = input === "" ? `Input ${String(i + 1)}` : input;
+      wanted.push({
+        id: inputHandle(board, link),
+        type: "target",
+        side: byId.get(link)?.in ?? idleSide(layout, "target"),
+        name: label,
+        label: `${label}, from ${name(from)}`,
+        link,
+        connectable: !locked
+      });
+    }
+    wanted.push({
+      id: NEXT,
+      type: "target",
+      side: idleSide(layout, "target"),
+      name: "Next input",
+      label: "Next input",
+      input: "",
+      connectable: !locked
+    });
+  } else {
+    const inputs = [...entry?.inputs ?? []];
+    for (const [, link] of into) if (!inputs.includes(link.input)) inputs.push(link.input);
+    for (const input of inputs) {
+      const feeding = into.find(([, link]) => link.input === input);
+      wanted.push({
+        id: feeding === void 0 ? `in:${input}` : inputHandle(board, feeding[0]),
+        type: "target",
+        side: (feeding === void 0 ? void 0 : byId.get(feeding[0])?.in) ?? idleSide(layout, "target"),
+        name: input,
+        label: feeding === void 0 ? input : `${input}, from ${name(feeding[1].from)}`,
+        ...feeding === void 0 ? {} : { link: feeding[0] },
+        input,
+        connectable: !locked
+      });
+    }
+  }
+  const sides = new Set(links.filter((link) => link.from.node === blockNode2(id)).map((link) => link.out));
+  if (sides.size === 0) sides.add(idleSide(layout, "source"));
+  for (const side of SIDES) {
+    if (sides.has(side)) wanted.push({ id: `out-${side}`, type: "source", side, name: "Result", label: "Result", connectable: !locked });
+  }
+  const markLeft = (width - MARK) / 2;
+  const [first, last] = [HANDLE / 2, MARK - HANDLE / 2];
+  const lines = {
+    top: { x: width / 2, y: 0, along: "x", lo: markLeft + first, hi: markLeft + last },
+    bottom: { x: width / 2, y: BLOCK_HEIGHT, along: "x", lo: markLeft + first, hi: markLeft + last },
+    left: { x: markLeft, y: MARK / 2, along: "y", lo: first, hi: last },
+    right: { x: markLeft + MARK, y: MARK / 2, along: "y", lo: first, hi: MARK - DOT_ROOM, most: MARK - DOT_ROOM }
+  };
+  return placed(wanted, lines, spreading);
+}
+function stackHandles(box, links, node) {
+  const wanted = [];
+  for (const side of SIDES) {
+    if (links.some((link) => link.to.node === node && link.in === side)) {
+      wanted.push({ id: `in-${side}`, type: "target", side, name: "Links in", label: "Links into the stack", connectable: false });
+    }
+    if (links.some((link) => link.from.node === node && link.out === side)) {
+      wanted.push({ id: `out-${side}`, type: "source", side, name: "Links out", label: "Links out of the stack", connectable: false });
+    }
+  }
+  const [first, w, h] = [HANDLE / 2, box.w, box.h];
+  const lines = {
+    top: { x: w / 2, y: 0, along: "x", lo: first, hi: w - first },
+    bottom: { x: w / 2, y: h, along: "x", lo: first, hi: w - first },
+    left: { x: 0, y: h / 2, along: "y", lo: first, hi: h - first },
+    right: { x: w, y: h / 2, along: "y", lo: first, hi: h - first }
+  };
+  return placed(wanted, lines, null);
+}
+var SIDES = ["top", "right", "bottom", "left"];
+function placed(wanted, lines, spreading) {
+  const out = [];
+  for (const side of SIDES) {
+    const handles = wanted.filter((handle) => handle.side === side);
+    const line = lines[side];
+    const { at: at2, crowded } = middles(handles.length, line, spreading === side);
+    for (const [i, handle] of handles.entries()) {
+      const along = at2[i] ?? 0;
+      const x = line.along === "x" ? along : line.x;
+      const y = line.along === "y" ? along : line.y;
+      out.push({ ...handle, crowded, x: x - HANDLE / 2, y: y - HANDLE / 2 });
+    }
+  }
+  return out;
+}
+function middles(n, line, spreading) {
+  const middle = line.along === "x" ? line.x : line.y;
+  const full = Array.from({ length: n }, (_, i) => middle + (i - (n - 1) / 2) * HANDLE_STEP);
+  const [first, last] = [full[0] ?? middle, full.at(-1) ?? middle];
+  const crowded = (n - 1) * HANDLE_STEP > line.hi - line.lo;
+  if (!crowded) {
+    const shift = first < line.lo ? line.lo - first : last > line.hi ? line.hi - last : 0;
+    return { at: full.map((at2) => at2 + shift), crowded };
+  }
+  if (spreading) {
+    const back = line.most === void 0 ? 0 : Math.max(0, last - line.most);
+    return { at: full.map((at2) => at2 - back), crowded };
+  }
+  const step = (line.hi - line.lo) / (n - 1);
+  return { at: Array.from({ length: n }, (_, i) => line.lo + i * step), crowded };
+}
+var POSITIONS = {
+  top: Position.Top,
+  right: Position.Right,
+  bottom: Position.Bottom,
+  left: Position.Left
+};
+function nodeHandle(handle) {
+  return { id: handle.id, type: handle.type, position: POSITIONS[handle.side], x: handle.x, y: handle.y, width: HANDLE, height: HANDLE };
+}
+function positionOf(side) {
+  return POSITIONS[side];
+}
+
+// srcts/ui/link.tsx
+import { memo } from "react";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+var ARROW = 8;
+var OUTWARD = {
+  [Position.Top]: [0, -1],
+  [Position.Right]: [1, 0],
+  [Position.Bottom]: [0, 1],
+  [Position.Left]: [-1, 0]
+};
+var LinkView = memo(
+  DrawnLink,
+  (a, b) => a.sourceX === b.sourceX && a.sourceY === b.sourceY && a.targetX === b.targetX && a.targetY === b.targetY && a.sourcePosition === b.sourcePosition && a.targetPosition === b.targetPosition && a.data?.label === b.data?.label
+);
+function DrawnLink({
+  id,
+  sourceX,
+  sourceY,
+  sourcePosition,
+  targetX,
+  targetY,
+  targetPosition,
+  data
+}) {
+  const [ox, oy] = OUTWARD[targetPosition];
+  const [baseX, baseY] = [targetX + ox * ARROW, targetY + oy * ARROW];
+  const [path, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX: baseX,
+    targetY: baseY,
+    targetPosition
+  });
+  const [px, py] = [-oy * (ARROW / 2), ox * (ARROW / 2)];
+  const arrow = `M${String(targetX)},${String(targetY)} L${String(baseX + px)},${String(baseY + py)} L${String(baseX - px)},${String(baseY - py)} Z`;
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
+    /* @__PURE__ */ jsx(
+      BaseEdge,
+      {
+        id,
+        path,
+        labelX,
+        labelY,
+        label: data?.label,
+        labelShowBg: true,
+        labelBgPadding: [4, 2],
+        labelBgBorderRadius: 4,
+        interactionWidth: 16
+      }
+    ),
+    /* @__PURE__ */ jsx("path", { className: "blockr-graph-arrow", d: arrow })
+  ] });
+}
+
+// srcts/ui/links.ts
+function linkDrop(nodes, { source, target, targetHandle }) {
+  const from = objectOf(source);
+  const to = objectOf(target);
+  const node = nodes.find((each) => each.id === target);
+  if (from === void 0 || to === void 0 || !("block" in from) || !("block" in to) || node?.data.kind !== "block") return void 0;
+  const handle = node.data.handles.find((each) => each.id === targetHandle);
+  if (handle === void 0) return void 0;
+  if (handle.input === void 0) return { taken: takenPlace(handle.link ?? "", handle.name, to.block) };
+  return { add: { from: from.block, to: to.block, ...handle.input === "" ? {} : { input: handle.input } } };
+}
+function takenPlace(link, place, block) {
+  return `The link "${link}" feeds the place "${place}" of block "${block}" already.`;
+}
+
+// srcts/ui/moves.ts
+var NO_MOVES = { positions: {}, points: {} };
+function canvasNode(canvas, node) {
+  const object2 = objectOf(node);
+  if (object2 === void 0) return void 0;
+  if ("block" in object2) {
+    const box2 = boxOfBlock(canvas, object2.block);
+    return box2 === void 0 ? void 0 : { kind: "block", id: object2.block, box: box2, stack: stackOf(canvas.board).get(object2.block) ?? null };
+  }
+  if (!("stack" in object2)) return void 0;
+  const box = shownBox(canvas, object2.stack);
+  return box === void 0 ? void 0 : { kind: "stack", id: object2.stack, box, stack: object2.stack };
+}
+function centreOf(canvas, node) {
+  const box = canvasNode(canvas, node)?.box;
+  return box === void 0 ? void 0 : { x: box.x, y: box.y };
+}
+function movedBy(canvas, nodes, dx, dy, layout) {
+  let changes = NO_MOVES;
+  for (const id of nodes) {
+    const node = canvasNode(canvas, id);
+    if (node !== void 0) changes = merged(changes, nodeChanges(canvas, node, shifted(node.box, dx, dy)));
+  }
+  return layout.snap ? snapped(changes, layout.snap_size) : changes;
+}
+function snapped(changes, size) {
+  const round = (points2) => Object.fromEntries(Object.entries(points2).map(([id, point]) => [id, snapPoint(point, size)]));
+  return { positions: round(changes.positions), points: round(changes.points) };
+}
+function dragMoves(start2, nodes, from, to, layout) {
+  return movedBy(start2, nodes, to.x - from.x, to.y - from.y, layout);
+}
+function keyMoves(canvas, moved, layout) {
+  const step = (by) => Math.abs(by) < 1 ? 0 : Math.sign(by) * layout.snap_size;
+  let changes = NO_MOVES;
+  for (const [node, to] of moved) {
+    const from = centreOf(canvas, node);
+    if (from === void 0) continue;
+    let [dx, dy] = [to.x - from.x, to.y - from.y];
+    if (layout.snap) [dx, dy] = [step(dx), step(dy)];
+    changes = merged(changes, movedBy(canvas, [node], dx, dy, layout));
+  }
+  return changes;
+}
+function joins(start2, moves2, nodes) {
+  const held = stackOf(start2.board);
+  const boxes = [];
+  for (const stack2 of Object.keys(start2.board.stacks)) {
+    const box = shownBox(start2, stack2);
+    if (box !== void 0) boxes.push([stack2, box]);
+  }
+  const joined = /* @__PURE__ */ new Map();
+  for (const node of nodes) {
+    const object2 = objectOf(node);
+    if (object2 === void 0 || !("block" in object2)) continue;
+    const point = moves2.positions[object2.block];
+    if (point === void 0) continue;
+    const own = held.get(object2.block);
+    const holding = boxes.filter(([stack2, box]) => stack2 !== own && contains(box, point)).sort(([, a], [, b]) => a.w * a.h - b.w * b.h);
+    const [first] = holding;
+    if (first !== void 0) joined.set(object2.block, first[0]);
+  }
+  return joined;
+}
+function contains(box, point) {
+  return Math.abs(point.x - box.x) <= box.w / 2 && Math.abs(point.y - box.y) <= box.h / 2;
+}
+function movesBatch(canvas, moves2, joined = /* @__PURE__ */ new Map()) {
+  const positions = movedOnly(canvas.positions, moves2.positions);
+  const stacks = movedOnly(canvas.points, moves2.points);
+  const batch = [];
+  for (const [stack2, blocks] of joiningBlocks(canvas.board, joined)) {
+    batch.push({ id: "blockr.core-change_stack", args: { id: stack2, blocks } });
+  }
+  if (Object.keys(positions).length > 0 || Object.keys(stacks).length > 0) {
+    batch.push({ id: "blockr.graph-change_position", args: { positions, stacks } });
+  }
+  return batch;
+}
+function movedOnly(from, moved) {
+  const out = {};
+  for (const [id, point] of Object.entries(moved)) {
+    const was = from[id];
+    if (was?.x !== point.x || was.y !== point.y) out[id] = { x: point.x, y: point.y };
+  }
+  return out;
+}
+function joiningBlocks(board, joined) {
+  const stacks = /* @__PURE__ */ new Map();
+  for (const block of Object.keys(board.blocks)) {
+    const stack2 = joined.get(block);
+    if (stack2 === void 0) continue;
+    stacks.set(stack2, [...stacks.get(stack2) ?? board.stacks[stack2]?.blocks ?? [], block]);
+  }
+  return stacks;
+}
+
+// srcts/ui/nodes.tsx
+import { Button, useNotified, useStatus } from "@blockr/core/react";
+import { memo as memo2 } from "react";
+
+// srcts/ui/status-dot.ts
+var DOTS2 = {
+  stale: { ring: false, tooltip: "Inputs changed since this block last ran" },
+  waiting: { ring: true, tooltip: "Waiting for a data input" },
+  invalid: { ring: false, tooltip: "Set this block's inputs" },
+  failed: { ring: false, tooltip: "Evaluation failed" },
+  ready: { ring: false, tooltip: "Up to date" },
+  unevaluated: { ring: true, tooltip: "Not evaluated yet" }
+};
+function statusDot(status, notifications) {
+  if (status === void 0) return null;
+  const reads = status.status !== "stale" && notifications.some(isOutputError) ? "failed" : status.status;
+  return { status: reads, ...DOTS2[reads] };
+}
+function isOutputError({ severity, source }) {
+  if (severity !== "error") return false;
+  if (source.kind === "r") return source.request.type === "output";
+  return source.kind === "core" && source.code === "output_unanswered";
+}
+
+// srcts/ui/tip.tsx
+import { Focusable, Tooltip, TooltipTrigger } from "@blockr/core/react";
+import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
+var DELAY = 600;
+function Tip({ label, children }) {
+  return /* @__PURE__ */ jsxs2(TooltipTrigger, { delay: DELAY, closeDelay: 0, children: [
+    /* @__PURE__ */ jsx2(Focusable, { children }),
+    /* @__PURE__ */ jsx2(Tooltip, { placement: "top", children: label })
+  ] });
+}
+
+// srcts/ui/nodes.tsx
+import { Fragment as Fragment2, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
+var UNCATEGORIZED = "uncategorized";
+function categoryOf(entry) {
+  return entry === void 0 || entry.category === "" ? UNCATEGORIZED : entry.category;
+}
+var BlockNodeView = memo2(DrawnBlock, sameNode);
+var StackNodeView = memo2(DrawnStack, sameNode);
+function sameNode(a, b) {
+  return a.selected === b.selected && sameValue(a.data, b.data);
+}
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((item, i) => sameValue(item, b[i]));
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || Array.isArray(a) || Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => sameValue(a[key], b[key]));
+}
+function DrawnBlock({ id, data, selected }) {
+  const { core } = useGraph();
+  const status = useStatus(core, data.block);
+  const notified = useNotified(core, { block: data.block });
+  const dot = statusDot(status, notified);
+  return /* @__PURE__ */ jsxs3("div", { className: "blockr-graph-block", "data-selected": selected ? "" : void 0, children: [
+    /* @__PURE__ */ jsxs3("span", { className: "blockr-graph-mark-frame", children: [
+      /* @__PURE__ */ jsx3(
+        "span",
+        {
+          className: "blockr-graph-mark",
+          "data-category": categoryOf(data.entry),
+          "aria-hidden": "true",
+          dangerouslySetInnerHTML: { __html: data.entry?.icon ?? "" }
+        }
+      ),
+      dot === null ? null : /* @__PURE__ */ jsx3(Dot, { dot })
+    ] }),
+    /* @__PURE__ */ jsx3("span", { className: "blockr-graph-name", children: data.name }),
+    data.handles.map((handle) => /* @__PURE__ */ jsx3(GraphHandle, { node: id, handle }, handle.id))
+  ] });
+}
+function Dot({ dot }) {
+  return /* @__PURE__ */ jsx3(Tip, { label: dot.tooltip, children: /* @__PURE__ */ jsx3(
+    "span",
+    {
+      className: "blockr-graph-dot",
+      "data-status": dot.status,
+      "data-ring": dot.ring ? "" : void 0,
+      role: "img",
+      "aria-label": dot.tooltip
+    }
+  ) });
+}
+function GraphHandle({ node, handle }) {
+  const { enter, leave } = useGraph();
+  const style = { left: handle.x, top: handle.y, width: HANDLE, height: HANDLE };
+  return /* @__PURE__ */ jsx3(Tip, { label: handle.label, children: /* @__PURE__ */ jsx3(
+    Handle,
+    {
+      id: handle.id,
+      type: handle.type,
+      position: positionOf(handle.side),
+      isConnectable: handle.connectable,
+      className: "blockr-graph-handle",
+      style,
+      "aria-label": handle.label,
+      "data-crowded": handle.crowded ? "" : void 0,
+      onPointerEnter: () => {
+        enter({ node, side: handle.side, ...handle.link === void 0 ? {} : { link: handle.link }, crowded: handle.crowded });
+      },
+      onPointerLeave: leave
+    }
+  ) });
+}
+function DrawnStack({ data, selected }) {
+  const { core } = useGraph();
+  const color = data.color ?? "var(--bc-color-border-default)";
+  const count = `${String(data.count)} ${data.count === 1 ? "block" : "blocks"}`;
+  const collapse2 = data.shows === "empty" ? null : /* @__PURE__ */ jsx3(
+    Button,
+    {
+      variant: "quiet",
+      className: "blockr-graph-collapse nodrag",
+      "aria-label": data.shows === "collapsed" ? `Expand ${data.name}` : `Collapse ${data.name}`,
+      onPress: () => {
+        void core.commands.run("blockr.graph-collapse_stack", { stack: data.stack, collapsed: data.shows !== "collapsed" });
+      },
+      children: /* @__PURE__ */ jsx3(Chevron, { collapsed: data.shows === "collapsed" })
+    }
+  );
+  return /* @__PURE__ */ jsx3(
+    "div",
+    {
+      className: "blockr-graph-stack",
+      "data-shows": data.shows,
+      "data-selected": selected ? "" : void 0,
+      style: { "--blockr-graph-stack-color": color },
+      children: data.shows === "expanded" ? /* @__PURE__ */ jsxs3(Fragment2, { children: [
+        /* @__PURE__ */ jsx3("span", { className: "blockr-graph-stack-name", children: data.name }),
+        collapse2
+      ] }) : /* @__PURE__ */ jsxs3(Fragment2, { children: [
+        /* @__PURE__ */ jsxs3("span", { className: "blockr-graph-stack-title", children: [
+          /* @__PURE__ */ jsx3("span", { className: "blockr-graph-stack-label", children: data.name }),
+          /* @__PURE__ */ jsx3("span", { className: "blockr-graph-stack-count", children: count })
+        ] }),
+        collapse2,
+        data.handles.map((handle) => /* @__PURE__ */ jsx3(
+          Handle,
+          {
+            id: handle.id,
+            type: handle.type,
+            position: positionOf(handle.side),
+            isConnectable: false,
+            className: "blockr-graph-handle blockr-graph-stack-handle",
+            style: { left: handle.x, top: handle.y, width: HANDLE, height: HANDLE }
+          },
+          handle.id
+        ))
+      ] })
+    }
+  );
+}
+function Chevron({ collapsed }) {
+  return /* @__PURE__ */ jsx3("svg", { width: 12, height: 12, viewBox: "0 0 12 12", "aria-hidden": "true", "data-collapsed": collapsed ? "" : void 0, children: /* @__PURE__ */ jsx3("path", { d: "M3 4.5 L6 7.5 L9 4.5", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" }) });
+}
+
+// srcts/ui/selection.ts
+function selectedIds(objects) {
+  return new Set(objects.flatMap((object2) => idOf(object2) ?? []));
+}
+function selectionAfter(current, drawn, changes, rectangle) {
+  const additive = changes.every((change) => change.selected);
+  const ids = /* @__PURE__ */ new Map();
+  for (const object2 of current) {
+    const id = idOf(object2);
+    const kept = id !== void 0 && drawn.has(id) ? true : additive;
+    if (kept) ids.set(id ?? `other:${JSON.stringify(object2)}`, object2);
+  }
+  for (const { id, selected } of changes) {
+    const object2 = objectOf(id);
+    if (object2 === void 0) continue;
+    if (selected) ids.set(id, object2);
+    else ids.delete(id);
+  }
+  if (rectangle !== void 0) {
+    for (const edge of rectangle.edges) {
+      if (ids.has(edge.id) && !(ids.has(edge.source) && ids.has(edge.target))) ids.delete(edge.id);
+    }
+  }
+  return [...ids.values()];
+}
+function sameSelection(a, b) {
+  if (a.length !== b.length) return false;
+  const keys = new Set(a.map((object2) => JSON.stringify(object2)));
+  return b.every((object2) => keys.has(JSON.stringify(object2)));
+}
+function shownBlock(objects) {
+  const [only] = objects;
+  return objects.length === 1 && only !== void 0 && "block" in only ? only.block : void 0;
+}
+
+// srcts/ui/view.ts
+var views = /* @__PURE__ */ new Map();
+function savedView(board) {
+  return views.get(board);
+}
+function saveView(board, view) {
+  views.set(board, { x: view.x, y: view.y, zoom: view.zoom });
+}
+var MIN_ZOOM = 0.1;
+var MAX_ZOOM = 2;
+var FIT_ZOOM = 1;
+var FIT_PADDING = { top: "36px", right: "24px", bottom: "24px", left: "60px" };
+var STACK_NAME = 20;
+function fittedView(canvas, size) {
+  const boxes = canvasNodes(canvas).map((node) => node.box);
+  for (const stack2 of Object.keys(canvas.board.stacks)) {
+    const box2 = shownBox(canvas, stack2);
+    if (box2 !== void 0) boxes.push({ ...box2, y: box2.y - STACK_NAME / 2, h: box2.h + STACK_NAME });
+  }
+  const box = bounds(boxes);
+  if (box === void 0 || size.width === 0 || size.height === 0) return void 0;
+  const rect = { x: box.x - box.w / 2, y: box.y - box.h / 2, width: box.w, height: box.h };
+  return getViewportForBounds(rect, size.width, size.height, MIN_ZOOM, FIT_ZOOM, FIT_PADDING);
+}
+
+// srcts/ui/canvas.tsx
+import { jsx as jsx4 } from "react/jsx-runtime";
+var NODE_TYPES = { block: BlockNodeView, stack: StackNodeView };
+var EDGE_TYPES = { link: LinkView };
+var ORIGIN = [0.5, 0.5];
+var PAUSE = 500;
+function Canvas({ hovered, spread, size, onRefusal }) {
+  const { core, plugin } = useGraph();
+  const board = useBoard(core);
+  const selection = useSyncExternalStore(
+    useCallback((notify) => core.selection.subscribe(notify), [core]),
+    () => core.selection.get()
+  );
+  const flow = useReactFlow();
+  const state = graphState(board, plugin) ?? defaultState;
+  const { layout } = state;
+  const locked = core.lock.board;
+  const registry = core.blockRegistry();
+  const [moves2, setMovesState] = useState(NO_MOVES);
+  const movesRef = useRef(NO_MOVES);
+  const setMoves = useCallback((next) => {
+    movesRef.current = next;
+    setMovesState(next);
+  }, []);
+  const base = useMemo(() => canvasOf(board, state), [board, state]);
+  const canvas = useMemo(() => changed(base, moves2), [base, moves2]);
+  const selected = useMemo(() => selectedIds(selection), [selection]);
+  const { nodes, edges } = useMemo(
+    () => elementsOf({ canvas, registry, layout, selected, hovered, locked, spread }),
+    [canvas, registry, layout, selected, hovered, locked, spread]
+  );
+  const drawn = useRef({ nodes, edges });
+  useEffect(() => {
+    drawn.current = { nodes, edges };
+  }, [nodes, edges]);
+  const current = useCallback(() => {
+    const now = core.store.board();
+    return canvasOf(now, graphState(now, plugin) ?? defaultState);
+  }, [core, plugin]);
+  const keyTimer = useRef(void 0);
+  const runMoves = useCallback(
+    async (batch) => {
+      clearTimeout(keyTimer.current);
+      try {
+        if (batch.length > 0) await core.commands.run(batch);
+      } catch {
+      } finally {
+        setMoves(NO_MOVES);
+      }
+    },
+    [core, setMoves]
+  );
+  const drag = useRef(null);
+  const runKeys = useCallback(() => {
+    clearTimeout(keyTimer.current);
+    if (drag.current !== null || movesRef.current === NO_MOVES) return;
+    void runMoves(movesBatch(current(), movesRef.current));
+  }, [current, runMoves]);
+  useEffect(
+    () => () => {
+      clearTimeout(keyTimer.current);
+    },
+    []
+  );
+  const centre = useCallback(
+    (id, position) => {
+      const parentId = flow.getInternalNode(id)?.parentId;
+      const parent = parentId === void 0 ? void 0 : flow.getInternalNode(parentId);
+      const offset = parent?.internals.positionAbsolute ?? { x: 0, y: 0 };
+      return { x: position.x + offset.x, y: position.y + offset.y };
+    },
+    [flow]
+  );
+  const startDrag = useCallback(
+    (lead, dragged) => {
+      clearTimeout(keyTimer.current);
+      const pending = movesRef.current;
+      const start2 = changed(current(), pending);
+      const from = /* @__PURE__ */ new Map();
+      for (const { id } of dragged) {
+        const point = centreOf(start2, id);
+        if (point !== void 0) from.set(id, point);
+      }
+      const first = lead ?? dragged[0]?.id;
+      drag.current = first === void 0 ? null : { canvas: start2, pending, from, lead: first };
+    },
+    [current]
+  );
+  const endDrag = useCallback(() => {
+    const ended = drag.current;
+    drag.current = null;
+    if (ended === null) return;
+    const now = movesRef.current;
+    const joined = locked ? /* @__PURE__ */ new Map() : joins(ended.canvas, now, ended.from.keys());
+    void runMoves(movesBatch(current(), now, joined));
+  }, [current, locked, runMoves]);
+  const selects = useRef([]);
+  const clicked = useRef(null);
+  const flushing = useRef(false);
+  const rectangle = useRef(null);
+  const flushSelects = useCallback(() => {
+    flushing.current = false;
+    const changes = selects.current;
+    const click = clicked.current;
+    const box = rectangle.current;
+    selects.current = [];
+    clicked.current = null;
+    if (box === "ended") rectangle.current = null;
+    const before = core.selection.get();
+    const ids = /* @__PURE__ */ new Set([...drawn.current.nodes.map((node) => node.id), ...drawn.current.edges.map((edge) => edge.id)]);
+    const after = changes.length === 0 ? before : selectionAfter(before, ids, changes, box === "drawing" ? { edges: drawn.current.edges } : void 0);
+    const changedSelection = !sameSelection(before, after);
+    if (changedSelection) core.selection.set(after);
+    if (box === "drawing") return;
+    const block = shownBlock(after);
+    if (block !== void 0 && (changedSelection || box === "ended" || click === blockNode2(block))) {
+      core.show({ block }).catch(() => void 0);
+    }
+  }, [core]);
+  const scheduleSelects = useCallback(() => {
+    if (flushing.current) return;
+    flushing.current = true;
+    queueMicrotask(flushSelects);
+  }, [flushSelects]);
+  const onNodesChange = useCallback(
+    (changes) => {
+      const moved = /* @__PURE__ */ new Map();
+      const selecting = [];
+      for (const change of changes.toArray()) {
+        if (change.type === "position" && change.position !== void 0) moved.set(change.id, centre(change.id, change.position));
+        if (change.type === "select") selecting.push({ id: change.id, selected: change.selected });
+      }
+      const dragging = drag.current;
+      if (moved.size > 0 && dragging !== null) {
+        const lead = [dragging.lead, ...dragging.from.keys()].find((id) => moved.has(id));
+        const from = lead === void 0 ? void 0 : dragging.from.get(lead);
+        const to = lead === void 0 ? void 0 : moved.get(lead);
+        if (from !== void 0 && to !== void 0) {
+          setMoves(merged(dragging.pending, dragMoves(dragging.canvas, dragging.from.keys(), from, to, layout)));
+        }
+      } else if (moved.size > 0) {
+        const now = movesRef.current;
+        setMoves(merged(now, keyMoves(changed(current(), now), moved, layout)));
+        clearTimeout(keyTimer.current);
+        keyTimer.current = setTimeout(runKeys, PAUSE);
+      }
+      if (selecting.length > 0) {
+        selects.current.push(...selecting);
+        scheduleSelects();
+      }
+    },
+    [centre, current, layout, runKeys, scheduleSelects, setMoves]
+  );
+  const onEdgesChange = useCallback(
+    (changes) => {
+      const selecting = changes.toArray().flatMap((change) => change.type === "select" ? [{ id: change.id, selected: change.selected }] : []);
+      if (selecting.length === 0) return;
+      selects.current.push(...selecting);
+      scheduleSelects();
+    },
+    [scheduleSelects]
+  );
+  const onConnectEnd = useCallback(
+    (_event, connection) => {
+      if (connection.fromNode === null) return;
+      const { fromNode, fromHandle, toNode, toHandle, pointer: pointer2, isValid } = connection;
+      if (toNode === null || toHandle === null || isValid !== true) return;
+      const dropped = fromHandle.type === "source" ? { source: fromNode.id, target: toNode.id, targetHandle: toHandle.id ?? "" } : { source: toNode.id, target: fromNode.id, targetHandle: fromHandle.id ?? "" };
+      const drop = linkDrop(drawn.current.nodes, dropped);
+      if (drop === void 0) return;
+      const refuse = (message) => {
+        onRefusal({ x: pointer2.x, y: pointer2.y, message });
+      };
+      if ("taken" in drop) {
+        refuse(drop.taken);
+        return;
+      }
+      core.commands.run("blockr.core-add_link", drop.add, "user", {
+        notifier: (notifications) => {
+          refuse(notifications.map((notification) => notification.message).join("\n"));
+        }
+      }).catch(() => void 0);
+    },
+    [core, onRefusal]
+  );
+  const view = savedView(board.id);
+  const fitted2 = useRef(view !== void 0);
+  const hasBlocks = Object.keys(board.blocks).length > 0;
+  useEffect(() => {
+    if (fitted2.current || size.width === 0 || size.height === 0) return;
+    if (!hasBlocks) {
+      fitted2.current = true;
+      void flow.setViewport({ x: size.width / 2, y: size.height / 2, zoom: 1 });
+    } else if (nodes.length > 0) {
+      const fit = fittedView(base, size);
+      if (fit === void 0) return;
+      fitted2.current = true;
+      void flow.setViewport(fit);
+    }
+  }, [base, flow, hasBlocks, nodes.length, size]);
+  return /* @__PURE__ */ jsx4(
+    ReactFlow,
+    {
+      nodes,
+      edges,
+      nodeTypes: NODE_TYPES,
+      edgeTypes: EDGE_TYPES,
+      nodeOrigin: ORIGIN,
+      defaultViewport: view ?? DEFAULT_VIEW,
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM,
+      onNodesChange,
+      onEdgesChange,
+      onNodeDragStart: (_event, node, dragged) => {
+        startDrag(node.id, dragged);
+      },
+      onNodeDragStop: endDrag,
+      onSelectionDragStart: (_event, dragged) => {
+        startDrag(void 0, dragged);
+      },
+      onSelectionDragStop: endDrag,
+      onNodeClick: (_event, node) => {
+        clicked.current = node.id;
+        scheduleSelects();
+      },
+      onNodeDoubleClick: (_event, node) => {
+        if (node.data.kind !== "stack" || node.data.shows === "empty") return;
+        core.commands.run("blockr.graph-collapse_stack", { stack: node.data.stack, collapsed: node.data.shows === "expanded" }).catch(() => void 0);
+      },
+      onPaneClick: () => {
+        if (core.selection.get().length > 0) core.selection.set([]);
+      },
+      onSelectionStart: () => {
+        rectangle.current = "drawing";
+      },
+      onSelectionEnd: () => {
+        rectangle.current = "ended";
+        scheduleSelects();
+      },
+      onConnectEnd,
+      onMoveEnd: (_event, moved) => {
+        saveView(board.id, moved);
+      },
+      onBlur: runKeys,
+      nodesConnectable: !locked,
+      selectNodesOnDrag: false,
+      edgesFocusable: false,
+      edgesReconnectable: false,
+      deleteKeyCode: null
+    }
+  );
+}
+var DEFAULT_VIEW = { x: 0, y: 0, zoom: 1 };
+
+// srcts/ui/search.tsx
+import { SearchField, Tree, TreeItem, useBoard as useBoard2 } from "@blockr/core/react";
+import { useEffect as useEffect2, useMemo as useMemo2, useRef as useRef2, useState as useState2 } from "react";
+
+// srcts/ui/outline.ts
+function outlineOf(board) {
+  const held = stackOf(board);
+  const row = (block) => ({ block, name: board.blocks[block]?.name ?? block, stack: held.get(block) ?? null });
+  const stacks = Object.entries(board.stacks).map(([stack2, { name, blocks }]) => ({
+    stack: stack2,
+    name,
+    blocks: linkOrder(board, new Set(blocks.filter((block) => held.get(block) === stack2))).map(row)
+  }));
+  const loose = linkOrder(board, new Set(Object.keys(board.blocks).filter((block) => !held.has(block)))).map(row);
+  return { stacks, loose };
+}
+function matching(outline, query) {
+  const wanted = query.trim().toLowerCase();
+  const holds = (name, id) => name.toLowerCase().includes(wanted) || id.toLowerCase().includes(wanted);
+  const blocks = [...outline.stacks.flatMap((stack2) => stack2.blocks), ...outline.loose];
+  return {
+    stacks: outline.stacks.filter((stack2) => holds(stack2.name, stack2.stack)),
+    blocks: blocks.filter((block) => holds(block.name, block.block))
+  };
+}
+
+// srcts/ui/search.tsx
+import { Fragment as Fragment3, jsx as jsx5, jsxs as jsxs4 } from "react/jsx-runtime";
+var DURATION = 300;
+function SearchPanel({ onClose }) {
+  const { core, plugin } = useGraph();
+  const board = useBoard2(core);
+  const flow = useReactFlow();
+  const [query, setQuery] = useState2("");
+  const outline = useMemo2(() => outlineOf(board), [board]);
+  const found = useMemo2(() => matching(outline, query), [outline, query]);
+  const [expanded, setExpanded] = useState2(() => {
+    const { collapsed } = canvasOf(board, graphState(board, plugin) ?? defaultState);
+    return new Set(outline.stacks.filter(({ stack: stack2 }) => !collapsed.has(stack2)).map(({ stack: stack2 }) => stackNode2(stack2)));
+  });
+  const panel = useRef2(null);
+  useEffect2(() => {
+    const away = (event) => {
+      const target = event.target;
+      if (!(target instanceof Node) || panel.current?.contains(target) === true) return;
+      if (target instanceof Element && target.closest(".blockr-graph-toolbar") !== null) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+    };
+  }, [onClose]);
+  const pick = async (key) => {
+    const object2 = objectOf(key);
+    if (object2 === void 0) return;
+    onClose();
+    const before = core.store.board();
+    const stack2 = "block" in object2 ? outline.stacks.find(({ blocks }) => blocks.some(({ block }) => block === object2.block)) : void 0;
+    const state = graphState(before, plugin) ?? defaultState;
+    if (stack2 !== void 0 && canvasOf(before, state).collapsed.has(stack2.stack)) {
+      await core.commands.run("blockr.graph-collapse_stack", { stack: stack2.stack, collapsed: false }).catch(() => void 0);
+    }
+    const now = core.store.board();
+    const centre = centreOf(canvasOf(now, graphState(now, plugin) ?? defaultState), key);
+    if (centre !== void 0) void flow.setCenter(centre.x, centre.y, { zoom: flow.getZoom(), duration: DURATION });
+    const picked = [object2];
+    core.selection.set(picked);
+    if ("block" in object2) core.show({ block: object2.block }).catch(() => void 0);
+  };
+  const searching = query.trim() !== "";
+  return /* @__PURE__ */ jsxs4(
+    "div",
+    {
+      ref: panel,
+      className: "blockr-graph-search",
+      role: "dialog",
+      "aria-label": "Search blocks",
+      onKeyDown: (event) => {
+        if (event.key === "Escape") onClose();
+      },
+      children: [
+        /* @__PURE__ */ jsx5(SearchField, { "aria-label": "Search blocks and stacks", placeholder: "Search blocks and stacks", value: query, onChange: setQuery, autoFocus: true }),
+        searching ? found.stacks.length + found.blocks.length === 0 ? /* @__PURE__ */ jsx5("p", { className: "blockr-graph-search-none", children: "No block or stack matches." }) : /* @__PURE__ */ jsxs4(Tree, { "aria-label": "Matches", className: "blockr-graph-outline", onAction: (key) => void pick(String(key)), children: [
+          found.stacks.map(({ stack: stack2, name, blocks }) => /* @__PURE__ */ jsx5(TreeItem, { id: stackNode2(stack2), title: `${name} (${String(blocks.length)})` }, stackNode2(stack2))),
+          found.blocks.map(({ block, name }) => /* @__PURE__ */ jsx5(TreeItem, { id: blockNode2(block), title: name }, blockNode2(block)))
+        ] }) : /* @__PURE__ */ jsxs4(Fragment3, { children: [
+          /* @__PURE__ */ jsx5("h3", { className: "blockr-graph-search-heading", children: "Board contents" }),
+          outline.stacks.length + outline.loose.length === 0 ? /* @__PURE__ */ jsx5("p", { className: "blockr-graph-search-none", children: "The board holds no block." }) : /* @__PURE__ */ jsxs4(
+            Tree,
+            {
+              "aria-label": "Board contents",
+              className: "blockr-graph-outline",
+              expandedKeys: expanded,
+              onExpandedChange: setExpanded,
+              onAction: (key) => void pick(String(key)),
+              children: [
+                outline.stacks.map(({ stack: stack2, name, blocks }) => /* @__PURE__ */ jsx5(TreeItem, { id: stackNode2(stack2), title: `${name} (${String(blocks.length)})`, children: blocks.map(({ block, name: title }) => /* @__PURE__ */ jsx5(TreeItem, { id: blockNode2(block), title }, blockNode2(block))) }, stackNode2(stack2))),
+                outline.loose.map(({ block, name }) => /* @__PURE__ */ jsx5(TreeItem, { id: blockNode2(block), title: name }, blockNode2(block)))
+              ]
+            }
+          )
+        ] })
+      ]
+    }
+  );
+}
+
+// srcts/ui/toolbar.tsx
+import { Button as Button2, Toolbar, Tooltip as Tooltip2, TooltipTrigger as TooltipTrigger2, useBoard as useBoard3 } from "@blockr/core/react";
+import { jsx as jsx6, jsxs as jsxs5 } from "react/jsx-runtime";
+var DURATION2 = 200;
+function Controls({ searching, onSearch, size }) {
+  const { core, plugin } = useGraph();
+  const board = useBoard3(core);
+  const flow = useReactFlow();
+  const fit = () => {
+    const view = fittedView(canvasOf(board, graphState(board, plugin) ?? defaultState), size);
+    if (view !== void 0) void flow.setViewport(view, { duration: DURATION2 });
+  };
+  return /* @__PURE__ */ jsxs5(Toolbar, { orientation: "vertical", "aria-label": "Workflow tools", className: "blockr-graph-toolbar", children: [
+    /* @__PURE__ */ jsxs5(Control, { label: "Search blocks", onPress: onSearch, pressed: searching, children: [
+      /* @__PURE__ */ jsx6("path", { d: "M11 11 L14.5 14.5" }),
+      /* @__PURE__ */ jsx6("circle", { cx: 7, cy: 7, r: 4.5 })
+    ] }),
+    /* @__PURE__ */ jsx6(Control, { label: "Zoom in", onPress: () => void flow.zoomIn({ duration: DURATION2 }), children: /* @__PURE__ */ jsx6("path", { d: "M8 3 V13 M3 8 H13" }) }),
+    /* @__PURE__ */ jsx6(Control, { label: "Zoom out", onPress: () => void flow.zoomOut({ duration: DURATION2 }), children: /* @__PURE__ */ jsx6("path", { d: "M3 8 H13" }) }),
+    /* @__PURE__ */ jsx6(Control, { label: "Fit the view", onPress: fit, children: /* @__PURE__ */ jsx6("path", { d: "M2 6 V2 H6 M10 2 H14 V6 M14 10 V14 H10 M6 14 H2 V10" }) })
+  ] });
+}
+function Control({ label, onPress, pressed, children }) {
+  return /* @__PURE__ */ jsxs5(TooltipTrigger2, { delay: 600, children: [
+    /* @__PURE__ */ jsx6(
+      Button2,
+      {
+        variant: "quiet",
+        className: "blockr-graph-control",
+        "aria-label": label,
+        ...pressed === void 0 ? {} : { "aria-expanded": pressed },
+        onPress,
+        children: /* @__PURE__ */ jsx6("svg", { width: 16, height: 16, viewBox: "0 0 16 16", "aria-hidden": "true", className: "blockr-graph-icon", children })
+      }
+    ),
+    /* @__PURE__ */ jsx6(Tooltip2, { placement: "right", children: label })
+  ] });
+}
+
+// srcts/ui/graph.tsx
+import { jsx as jsx7, jsxs as jsxs6 } from "react/jsx-runtime";
+var REFUSAL = 8e3;
+var FOLD = 250;
+function GraphRoot({ core, plugin }) {
+  const [hovered, setHovered] = useState3(null);
+  const [spread, setSpread] = useState3(null);
+  const fold = useRef3(void 0);
+  useEffect3(
+    () => () => {
+      clearTimeout(fold.current);
+    },
+    []
+  );
+  const graph = useMemo3(
+    () => ({
+      core,
+      plugin,
+      enter: ({ node, side, link, crowded }) => {
+        setHovered(link ?? null);
+        clearTimeout(fold.current);
+        setSpread((was) => !crowded ? was : was?.node === node && was.side === side ? was : { node, side });
+      },
+      leave: () => {
+        setHovered(null);
+        clearTimeout(fold.current);
+        fold.current = setTimeout(() => {
+          setSpread(null);
+        }, FOLD);
+      }
+    }),
+    [core, plugin]
+  );
+  const board = useBoard4(core);
+  const empty = Object.keys(board.blocks).length === 0;
+  const element = useRef3(null);
+  const [own, setOwn] = useState3(false);
+  const [size, setSize] = useState3({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = element.current;
+    if (el === null) return;
+    let decided = false;
+    const measure = () => {
+      if (el.getClientRects().length === 0) return;
+      const { width, height } = el.getBoundingClientRect();
+      if (!decided) {
+        decided = true;
+        if (height === 0) {
+          setOwn(true);
+          return;
+        }
+      }
+      setSize((was) => was.width === width && was.height === height ? was : { width, height });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    measure();
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  const [searching, setSearching] = useState3(false);
+  const closeSearch = useCallback2(() => {
+    setSearching(false);
+  }, []);
+  const [refusal, setRefusal] = useState3(null);
+  useEffect3(() => {
+    if (refusal === null) return;
+    const timer = setTimeout(() => {
+      setRefusal(null);
+    }, REFUSAL);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [refusal]);
+  return /* @__PURE__ */ jsx7(GraphContext, { value: graph, children: /* @__PURE__ */ jsx7(ReactFlowProvider, { children: /* @__PURE__ */ jsxs6(
+    "div",
+    {
+      ref: element,
+      className: "blockr-graph",
+      "data-height": own ? "own" : void 0,
+      tabIndex: -1,
+      onPointerDown: (event) => {
+        setRefusal(null);
+        const el = element.current;
+        const target = event.target;
+        if (el === null || !(target instanceof Element) || target.closest(".react-flow__pane") === null) return;
+        const node = target.closest(".react-flow__node");
+        (node ?? el).focus({ preventScroll: true });
+      },
+      children: [
+        /* @__PURE__ */ jsx7(Canvas, { hovered, spread, size, onRefusal: setRefusal }, board.id),
+        /* @__PURE__ */ jsxs6("div", { className: "blockr-graph-tools", children: [
+          /* @__PURE__ */ jsx7(
+            Controls,
+            {
+              size,
+              searching,
+              onSearch: () => {
+                setSearching((open) => !open);
+              }
+            }
+          ),
+          searching ? /* @__PURE__ */ jsx7(SearchPanel, { onClose: closeSearch }) : null
+        ] }),
+        empty ? /* @__PURE__ */ jsx7("p", { className: "blockr-graph-empty", children: core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one." }) : null,
+        refusal === null ? null : /* @__PURE__ */ jsx7("div", { className: "blockr-graph-refusal", role: "alert", style: { left: refusal.x, top: refusal.y }, children: refusal.message })
+      ]
+    }
+  ) }) });
+}
+
+// srcts/ui/module.tsx
+import { jsx as jsx8 } from "react/jsx-runtime";
+var ui = {
+  render({ el, core, plugin }) {
+    const root = createRoot(el);
+    flushSync(() => {
+      root.render(/* @__PURE__ */ jsx8(GraphRoot, { core, plugin }));
+    });
+    return () => {
+      root.unmount();
+    };
+  }
+};
+
 // srcts/modules/graph/index.ts
 var api = 1;
 var graph_default = {
@@ -1379,7 +2588,8 @@ var graph_default = {
   update,
   afterStep,
   start,
-  commands: graphCommands
+  commands: graphCommands,
+  ui
 };
 export {
   api,

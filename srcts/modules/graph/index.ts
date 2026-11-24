@@ -13,9 +13,10 @@
 //   and its `start`, which gives every block and stack a position as a board
 //   opens (../../plugin).
 // - Its five commands (../../commands), which core registers with the class.
+// - Its `ui`, which draws the board with React Flow (../../ui).
 //
-// Each of them gives the same positions for the same board wherever it runs,
-// since none reads anything on the page.
+// Each but the `ui` gives the same positions for the same board wherever it
+// runs, since none reads anything on the page.
 
 import type { PluginClass } from "@blockr/core";
 // The schema of the class's state is the file that the build writes for R,
@@ -25,6 +26,7 @@ import schema from "../../../inst/js/graph.schema.json" with { type: "json" };
 import { graphCommands } from "../../commands/index.ts";
 import { afterStep, start, update } from "../../plugin/index.ts";
 import { defaultState } from "../../state/index.ts";
+import { ui } from "../../ui/index.ts";
 
 export const api = 1;
 
@@ -34,4 +36,5 @@ export default {
   afterStep,
   start,
   commands: graphCommands,
+  ui,
 } satisfies Omit<PluginClass, "id">;
