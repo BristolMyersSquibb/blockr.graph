@@ -70,8 +70,8 @@ describe("a drag", () => {
     const s2 = shownBox(start, "s2");
     const s1 = expandedBox(start, "s1");
     if (s2 === undefined || s1 === undefined) throw new Error("No box");
-    // c lands in the box of s2, which holds no block, and b, which s1 holds,
-    // stays in its own box.
+    // Block c lands in the box of s2, which holds no block, and block b,
+    // which s1 holds, stays in its own box.
     const moves = { positions: { c: { x: s2.x + 5, y: s2.y }, b: { x: 0, y: 140 } }, points: {} };
     expect([...joins(start, moves, ["b:c", "b:b"])]).toEqual([["c", "s2"]]);
   });
