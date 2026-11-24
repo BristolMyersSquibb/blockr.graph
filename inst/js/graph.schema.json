@@ -7,7 +7,7 @@
       "additionalProperties": {
         "$ref": "#/definitions/Point"
       },
-      "description": "Where each block sits on the canvas, by the block's id. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand."
+      "description": "Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand."
     },
     "stacks": {
       "type": "object",
