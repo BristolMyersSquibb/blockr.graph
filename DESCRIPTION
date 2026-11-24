@@ -20,6 +20,9 @@ Imports:
     blockr.core (>= 0.2.0)
 Suggests:
     testthat (>= 3.0.0),
+    withr,
+    shinytest2,
+    chromote,
     yyjsonr
 Remotes:
     BristolMyersSquibb/blockr.core@js-state
