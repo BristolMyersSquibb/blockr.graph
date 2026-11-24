@@ -210,7 +210,7 @@ describe("the class as steps change the board", () => {
     const { core } = await start(placed);
     await core.commands.run("blockr.core-change_stack", { id: "s1", blocks: [] });
     const entry = dag(core).stacks.s1;
-    expect(entry).toEqual({ x: 75, y: 10 });
+    expect(entry).toEqual({ x: 75, y: 0 });
   });
 });
 

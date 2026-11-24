@@ -6,8 +6,11 @@
 //
 // A block's node is its mark, 32 px across, as today's node is, with the
 // block's name below it, as G6 draws today's label.
-// A block's position is the centre of its mark, as a G6 node's position is
-// today, so that a board saved today keeps where its blocks sit.
+// A block's position is the centre of its node, as a stack's position is
+// the centre of its box.
+// Laying out and making room both work on centres, and React Flow places a
+// node by its centre with nodeOrigin [0.5, 0.5], so no position needs
+// converting.
 // The name is a line of 12 px text 4 px below the mark, with 5 px on either
 // side, as today's label is.
 // Its width comes from its length, at 6.2 px for a character, which is what

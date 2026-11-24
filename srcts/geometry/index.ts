@@ -5,7 +5,6 @@ export { apart, bounds, distance, overlaps, padded, shifted } from "./box.ts";
 export type { Box } from "./box.ts";
 export {
   blockBox,
-  blockPoint,
   boxOfBlock,
   canvasNodes,
   canvasOf,

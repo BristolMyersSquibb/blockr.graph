@@ -8,7 +8,7 @@ var graph_schema_default = {
       additionalProperties: {
         $ref: "#/definitions/Point"
       },
-      description: "Where each block sits on the canvas, by the block's id: the centre of the block's mark. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand."
+      description: "Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand."
     },
     stacks: {
       type: "object",
@@ -326,10 +326,7 @@ function stackOf(board) {
   return held;
 }
 function blockBox(point, name) {
-  return { x: point.x, y: point.y - MARK / 2 + BLOCK_HEIGHT / 2, w: blockWidth(name), h: BLOCK_HEIGHT };
-}
-function blockPoint(box) {
-  return { x: box.x, y: box.y - BLOCK_HEIGHT / 2 + MARK / 2 };
+  return { x: point.x, y: point.y, w: blockWidth(name), h: BLOCK_HEIGHT };
 }
 function stackBoxAt(point) {
   return { x: point.x, y: point.y, w: STACK_WIDTH, h: STACK_HEIGHT };
@@ -367,13 +364,14 @@ function canvasNodes(canvas) {
   return nodes;
 }
 function nodeChanges(canvas, node, box) {
-  if (node.kind === "block") return { positions: { [node.id]: blockPoint(box) }, points: {} };
-  if (!canvas.collapsed.has(node.id)) return { positions: {}, points: { [node.id]: { x: box.x, y: box.y } } };
+  const point = { x: box.x, y: box.y };
+  if (node.kind === "block") return { positions: { [node.id]: point }, points: {} };
+  if (!canvas.collapsed.has(node.id)) return { positions: {}, points: { [node.id]: point } };
   const [dx, dy] = [box.x - node.box.x, box.y - node.box.y];
   const positions = {};
   for (const block of canvas.board.stacks[node.id]?.blocks ?? []) {
-    const point = canvas.positions[block];
-    if (point !== void 0) positions[block] = { x: point.x + dx, y: point.y + dy };
+    const point2 = canvas.positions[block];
+    if (point2 !== void 0) positions[block] = { x: point2.x + dx, y: point2.y + dy };
   }
   return { positions, points: {} };
 }
@@ -466,7 +464,7 @@ function layOut(dagre, canvas, settings) {
   for (const id of Object.keys(board.blocks)) {
     if (nodeOf(id) !== blockNode(id)) continue;
     const node = graph.node(blockNode(id));
-    positions[id] = { x: node.x ?? 0, y: (node.y ?? 0) - node.height / 2 + MARK / 2 };
+    positions[id] = { x: node.x ?? 0, y: node.y ?? 0 };
   }
   for (const [id, stack2] of Object.entries(board.stacks)) {
     const node = graph.node(stackNode(id));
@@ -654,7 +652,7 @@ var positionCommands = [
   command({
     id: "blockr.graph-change_position",
     label: "Move blocks",
-    description: "Moves blocks, and stacks that hold no block, to the positions given, as a drag on the canvas does. A block's position is the centre of its mark. A stack that holds blocks has no position of its own, since its box fits its blocks, so move its blocks instead. A position given for a block that the same batch adds is where the DAG starts to place it, after the command that adds it. Every block and stack left out stays where it is.",
+    description: "Moves blocks, and stacks that hold no block, to the positions given, as a drag on the canvas does. A block's position is the centre of its node, which holds its mark and its name below it. A stack that holds blocks has no position of its own, since its box fits its blocks, so move its blocks instead. A position given for a block that the same batch adds is where the DAG starts to place it, after the command that adds it. Every block and stack left out stays where it is.",
     args: object({
       positions: points("The new positions of blocks, by the id of each block."),
       stacks: points("The new positions of stacks that hold no block, by the id of each stack.")
@@ -1080,14 +1078,9 @@ function wayOf(canvas, links, direction, gap) {
 
 // srcts/placement/start.ts
 function blockShape(name) {
-  return { w: blockWidth(name), h: BLOCK_HEIGHT, point: blockPoint, box: (point) => blockBox(point, name) };
+  return { w: blockWidth(name), h: BLOCK_HEIGHT };
 }
-var STACK_SHAPE = {
-  w: STACK_WIDTH,
-  h: STACK_HEIGHT,
-  point: (box) => ({ x: box.x, y: box.y }),
-  box: stackBoxAt
-};
+var STACK_SHAPE = { w: STACK_WIDTH, h: STACK_HEIGHT };
 function startPoints(canvas, added, layout) {
   const gap = gapOf(layout.spacing);
   const positions = {};
@@ -1102,21 +1095,21 @@ function startPoints(canvas, added, layout) {
     const point = canvas.points[stack2];
     if (point !== void 0) placed.push(stackBoxAt(point));
   }
-  const start2 = (shape, box) => {
+  const start2 = (box) => {
     const free = offPlaced(box, placed, layout.direction, gap);
     placed.push(free);
-    return shape.point(free);
+    return { x: free.x, y: free.y };
   };
   for (const block of linkOrder(canvas.board, added.blocks)) {
     if (canvas.positions[block] !== void 0) continue;
     const shape = blockShape(canvas.board.blocks[block]?.name ?? "");
-    const point = start2(shape, startBox(current, block, shape, layout, gap));
+    const point = start2(startBox(current, block, shape, layout, gap));
     positions[block] = point;
     current = changed(current, { positions: { [block]: point }, points: {} });
   }
   for (const stack2 of Object.keys(canvas.board.stacks)) {
     if (!added.stacks.has(stack2) || canvas.points[stack2] !== void 0) continue;
-    const point = start2(STACK_SHAPE, firstRank(current, STACK_SHAPE, layout, gap));
+    const point = start2(firstRank(current, STACK_SHAPE, layout, gap));
     points2[stack2] = point;
     current = changed(current, { positions: {}, points: { [stack2]: point } });
   }
@@ -1149,7 +1142,7 @@ function startBox(canvas, block, shape, layout, gap) {
 }
 function between(canvas, from, to, shape) {
   const [a, b] = [boxOfBlock(canvas, from), boxOfBlock(canvas, to)];
-  if (a === void 0 || b === void 0) return shape.box({ x: 0, y: 0 });
+  if (a === void 0 || b === void 0) return { x: 0, y: 0, w: shape.w, h: shape.h };
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, w: shape.w, h: shape.h };
 }
 function pastLast(canvas, blocks, way, shape, gap) {
@@ -1162,7 +1155,7 @@ function pastLast(canvas, blocks, way, shape, gap) {
   return { x: last.x, y: last.y + last.h / 2 + gap + shape.h / 2, w: shape.w, h: shape.h };
 }
 function rankPast(canvas, blocks, way, against, shape, gap) {
-  const span = bounds(blocks.flatMap((block) => boxOfBlock(canvas, block) ?? [])) ?? shape.box({ x: 0, y: 0 });
+  const span = bounds(blocks.flatMap((block) => boxOfBlock(canvas, block) ?? [])) ?? { x: 0, y: 0, w: shape.w, h: shape.h };
   const ahead = way.sign * against > 0;
   if (way.axis === "y") {
     const y = ahead ? span.y + span.h / 2 + gap + shape.h / 2 : span.y - span.h / 2 - gap - shape.h / 2;
@@ -1174,7 +1167,7 @@ function rankPast(canvas, blocks, way, against, shape, gap) {
 function firstRank(canvas, shape, layout, gap) {
   const boxes = canvasNodes(canvas).map((node) => node.box);
   const [first] = boxes;
-  if (first === void 0) return shape.box({ x: 0, y: 0 });
+  if (first === void 0) return { x: 0, y: 0, w: shape.w, h: shape.h };
   if (layout.direction === "TB") {
     const top = Math.min(...boxes.map((box) => box.y));
     const last2 = lastBy(boxes.filter((box) => box.y - top < gap / 2), (box) => box.x + box.w / 2);

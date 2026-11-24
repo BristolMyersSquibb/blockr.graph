@@ -34,8 +34,6 @@
 import type { BlockId, Board, Link, StackId } from "@blockr/core";
 import {
   BLOCK_HEIGHT,
-  blockBox,
-  blockPoint,
   blockWidth,
   bounds,
   boxOfBlock,
@@ -53,24 +51,17 @@ import type { Layout, Point } from "../state/index.ts";
 import { wayOf } from "./ways.ts";
 import type { Way } from "./ways.ts";
 
-// The size of what starts, and how its point and its box relate.
+// The size of what starts, which starts centred at its point.
 interface Shape {
   readonly w: number;
   readonly h: number;
-  point(box: Box): Point;
-  box(point: Point): Box;
 }
 
 function blockShape(name: string): Shape {
-  return { w: blockWidth(name), h: BLOCK_HEIGHT, point: blockPoint, box: (point) => blockBox(point, name) };
+  return { w: blockWidth(name), h: BLOCK_HEIGHT };
 }
 
-const STACK_SHAPE: Shape = {
-  w: STACK_WIDTH,
-  h: STACK_HEIGHT,
-  point: (box) => ({ x: box.x, y: box.y }),
-  box: stackBoxAt,
-};
+const STACK_SHAPE: Shape = { w: STACK_WIDTH, h: STACK_HEIGHT };
 
 // The points where what the step adds starts: the positions of the added
 // blocks and of the added stacks that hold no block, but for those that the
@@ -91,22 +82,22 @@ export function startPoints(canvas: Canvas, added: Added, layout: Layout): Chang
     const point = canvas.points[stack];
     if (point !== undefined) placed.push(stackBoxAt(point));
   }
-  const start = (shape: Shape, box: Box): Point => {
+  const start = (box: Box): Point => {
     const free = offPlaced(box, placed, layout.direction, gap);
     placed.push(free);
-    return shape.point(free);
+    return { x: free.x, y: free.y };
   };
 
   for (const block of linkOrder(canvas.board, added.blocks)) {
     if (canvas.positions[block] !== undefined) continue;
     const shape = blockShape(canvas.board.blocks[block]?.name ?? "");
-    const point = start(shape, startBox(current, block, shape, layout, gap));
+    const point = start(startBox(current, block, shape, layout, gap));
     positions[block] = point;
     current = changed(current, { positions: { [block]: point }, points: {} });
   }
   for (const stack of Object.keys(canvas.board.stacks)) {
     if (!added.stacks.has(stack) || canvas.points[stack] !== undefined) continue;
-    const point = start(STACK_SHAPE, firstRank(current, STACK_SHAPE, layout, gap));
+    const point = start(firstRank(current, STACK_SHAPE, layout, gap));
     points[stack] = point;
     current = changed(current, { positions: {}, points: { [stack]: point } });
   }
@@ -145,7 +136,7 @@ function startBox(canvas: Canvas, block: BlockId, shape: Shape, layout: Layout, 
 // Between two blocks: centred midway between their nodes.
 function between(canvas: Canvas, from: BlockId, to: BlockId, shape: Shape): Box {
   const [a, b] = [boxOfBlock(canvas, from), boxOfBlock(canvas, to)];
-  if (a === undefined || b === undefined) return shape.box({ x: 0, y: 0 });
+  if (a === undefined || b === undefined) return { x: 0, y: 0, w: shape.w, h: shape.h };
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, w: shape.w, h: shape.h };
 }
 
@@ -165,7 +156,7 @@ function pastLast(canvas: Canvas, blocks: readonly BlockId[], way: Way, shape: S
 // One rank past the blocks, across from their middle, in the way given, or
 // against it for -1.
 function rankPast(canvas: Canvas, blocks: readonly BlockId[], way: Way, against: 1 | -1, shape: Shape, gap: number): Box {
-  const span = bounds(blocks.flatMap((block) => boxOfBlock(canvas, block) ?? [])) ?? shape.box({ x: 0, y: 0 });
+  const span = bounds(blocks.flatMap((block) => boxOfBlock(canvas, block) ?? [])) ?? { x: 0, y: 0, w: shape.w, h: shape.h };
   const ahead = way.sign * against > 0;
   if (way.axis === "y") {
     const y = ahead ? span.y + span.h / 2 + gap + shape.h / 2 : span.y - span.h / 2 - gap - shape.h / 2;
@@ -181,7 +172,7 @@ function rankPast(canvas: Canvas, blocks: readonly BlockId[], way: Way, against:
 function firstRank(canvas: Canvas, shape: Shape, layout: Layout, gap: number): Box {
   const boxes = canvasNodes(canvas).map((node) => node.box);
   const [first] = boxes;
-  if (first === undefined) return shape.box({ x: 0, y: 0 });
+  if (first === undefined) return { x: 0, y: 0, w: shape.w, h: shape.h };
   if (layout.direction === "TB") {
     const top = Math.min(...boxes.map((box) => box.y));
     const last = lastBy(boxes.filter((box) => box.y - top < gap / 2), (box) => box.x + box.w / 2);

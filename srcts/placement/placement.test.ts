@@ -105,9 +105,8 @@ describe("where an added block starts", () => {
 
   test("for a stack that holds no block, as for a block linked to none, with its box's size", () => {
     const start = starts({ blocks: { a: "A" }, stacks: { s: [] }, state: { positions: { a: at(0, 0) } } }, [], ["s"]);
-    // The box's middle is level with the middle of a's node, which its name
-    // takes 10 px below the centre of its mark.
-    expect(start.points.s).toEqual(at(16 + GAP + STACK_WIDTH / 2, 10));
+    // The box's middle is level with the middle of a's node, its position.
+    expect(start.points.s).toEqual(at(16 + GAP + STACK_WIDTH / 2, 0));
   });
 });
 

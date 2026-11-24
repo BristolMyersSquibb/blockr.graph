@@ -16,7 +16,7 @@ import type { BlockId, StackId } from "@blockr/core";
 
 /** The state of the Workflow, which draws the board as a directed acyclic graph of its blocks and the links between them: where each block sits on the canvas, what the DAG keeps about stacks, and how it arranges the board. */
 export type GraphState = {
-  /** Where each block sits on the canvas, by the block's id: the centre of the block's mark. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand. */
+  /** Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand. */
   readonly positions: Readonly<Record<BlockId, Point>>;
   /** What the DAG keeps about a stack, by the stack's id, for a stack that holds no block, or one with blocks that the DAG shows collapsed. A stack that holds blocks and shows expanded has no entry. */
   readonly stacks: Readonly<Record<StackId, StackEntry>>;

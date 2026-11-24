@@ -6,7 +6,6 @@ import { boardOf, stateOf } from "../testing/index.ts";
 import {
   BLOCK_HEIGHT,
   blockBox,
-  blockPoint,
   blockWidth,
   bounds,
   canvasNodes,
@@ -32,11 +31,8 @@ describe("the nominal size of a block's node", () => {
     expect(BLOCK_HEIGHT).toBe(52);
   });
 
-  test("places the node by the centre of its mark, with the name below", () => {
-    const box = blockBox({ x: 100, y: 50 }, "Filter rows");
-    expect(box.y - box.h / 2).toBe(50 - MARK / 2);
-    expect(box.x).toBe(100);
-    expect(blockPoint(box)).toEqual({ x: 100, y: 50 });
+  test("centres the node at the block's position", () => {
+    expect(blockBox({ x: 100, y: 50 }, "Filter rows")).toEqual({ x: 100, y: 50, w: blockWidth("Filter rows"), h: BLOCK_HEIGHT });
   });
 });
 

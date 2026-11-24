@@ -3,8 +3,8 @@
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#nodes).
 // Placing, making room and laying out all work from these boxes.
 //
-// - A block's node is its mark with its name below it, placed by the
-//   block's position, the centre of its mark.
+// - A block's node is its mark with its name below it, centred at the
+//   block's position.
 // - A stack's box fits its blocks, with STACK_PADDING around them.
 // - A collapsed stack shows as a box of its own size, centred where its
 //   expanded box is, and its blocks hide.
@@ -16,7 +16,7 @@ import { isCollapse } from "../state/index.ts";
 import type { GraphState, Point } from "../state/index.ts";
 import { bounds, padded } from "./box.ts";
 import type { Box } from "./box.ts";
-import { BLOCK_HEIGHT, blockWidth, MARK, STACK_HEIGHT, STACK_PADDING, STACK_WIDTH } from "./sizes.ts";
+import { BLOCK_HEIGHT, blockWidth, STACK_HEIGHT, STACK_PADDING, STACK_WIDTH } from "./sizes.ts";
 
 // The board with where its blocks and stacks sit.
 export interface Canvas {
@@ -58,14 +58,9 @@ export function stackOf(board: Board): ReadonlyMap<BlockId, StackId> {
   return held;
 }
 
-// The box of a block's node at a position.
+// The box of a block's node, centred at the point.
 export function blockBox(point: Point, name: string): Box {
-  return { x: point.x, y: point.y - MARK / 2 + BLOCK_HEIGHT / 2, w: blockWidth(name), h: BLOCK_HEIGHT };
-}
-
-// The position of a block whose node has the box given.
-export function blockPoint(box: Box): Point {
-  return { x: box.x, y: box.y - BLOCK_HEIGHT / 2 + MARK / 2 };
+  return { x: point.x, y: point.y, w: blockWidth(name), h: BLOCK_HEIGHT };
 }
 
 // The box of a collapsed stack or of a stack that holds no block, centred
@@ -145,8 +140,9 @@ export interface Changes {
 // collapsed stack, those of its blocks, which move with it by one distance,
 // or for a stack that holds no block, its own.
 export function nodeChanges(canvas: Canvas, node: CanvasNode, box: Box): Changes {
-  if (node.kind === "block") return { positions: { [node.id]: blockPoint(box) }, points: {} };
-  if (!canvas.collapsed.has(node.id)) return { positions: {}, points: { [node.id]: { x: box.x, y: box.y } } };
+  const point = { x: box.x, y: box.y };
+  if (node.kind === "block") return { positions: { [node.id]: point }, points: {} };
+  if (!canvas.collapsed.has(node.id)) return { positions: {}, points: { [node.id]: point } };
   const [dx, dy] = [box.x - node.box.x, box.y - node.box.y];
   const positions: Record<BlockId, Point> = {};
   for (const block of canvas.board.stacks[node.id]?.blocks ?? []) {

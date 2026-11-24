@@ -21,7 +21,7 @@
 
 import type { BlockId, StackId } from "@blockr/core";
 import type { EdgeLabel, GraphLabel, NodeLabel } from "@dagrejs/dagre";
-import { BLOCK_HEIGHT, blockWidth, expandedBox, gapOf, MARK, STACK_HEIGHT, STACK_WIDTH, stackOf } from "../geometry/index.ts";
+import { BLOCK_HEIGHT, blockWidth, expandedBox, gapOf, STACK_HEIGHT, STACK_WIDTH, stackOf } from "../geometry/index.ts";
 import type { Canvas, Changes } from "../geometry/index.ts";
 import type { Layout, Point } from "../state/index.ts";
 import type { Dagre } from "./load.ts";
@@ -72,7 +72,7 @@ export function layOut(dagre: Dagre, canvas: Canvas, settings: Settings): Change
   for (const id of Object.keys(board.blocks)) {
     if (nodeOf(id) !== blockNode(id)) continue;
     const node = graph.node(blockNode(id));
-    positions[id] = { x: node.x ?? 0, y: (node.y ?? 0) - node.height / 2 + MARK / 2 };
+    positions[id] = { x: node.x ?? 0, y: node.y ?? 0 };
   }
   for (const [id, stack] of Object.entries(board.stacks)) {
     const node = graph.node(stackNode(id));

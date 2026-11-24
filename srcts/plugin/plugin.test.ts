@@ -100,7 +100,7 @@ describe("the class's afterStep", () => {
     const state = { positions: { a: at(0, 0), b: at(100, 0) }, stacks: { s: { collapsed: 1, moved: none } } };
     const before = boardOf({ blocks: { a: "A", b: "B" }, stacks: { s: ["a", "b"] }, state });
     const board = boardOf({ blocks: { a: "A", b: "B" }, stacks: { s: [] }, state });
-    expect(afterStep(board, before, GRAPH)).toEqual([{ op: "replace", path: path("stacks", "s"), value: at(50, 10) }]);
+    expect(afterStep(board, before, GRAPH)).toEqual([{ op: "replace", path: path("stacks", "s"), value: at(50, 0) }]);
   });
 
   test("drops the position of a stack that holds a block", () => {
