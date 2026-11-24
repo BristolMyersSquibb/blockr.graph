@@ -1,0 +1,8 @@
+/*
+ * React Flow's stylesheet, which the build bundles, minified, into
+ * xyflow-<hash>.css, which the DAG's stylesheet imports
+ * (../build/build.ts).
+ * React Flow 13 puts its rules in the cascade layer xyflow, so the rules of
+ * the DAG's own stylesheet, which no layer holds, win over them.
+ */
+@import "@xyflow/react/dist/style.css";

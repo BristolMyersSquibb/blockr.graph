@@ -1,22 +1,26 @@
 // Builds the DAG's client into inst/js, which the R package ships and git
 // keeps, since R CMD check and CRAN run no Node. Run: npm run build
 //
-// - A module, srcts/modules/<name>/index.ts, is bundled into <name>.js, as the
-//   module of the DAG plugin's class is into graph.js.
+// - A module, srcts/modules/<name>/index.ts or, where it draws with React,
+//   index.tsx, is bundled into <name>.js, as the module of the DAG plugin's
+//   class is into graph.js.
 // - Each takes the build preset that blockr.core ships as `@blockr/core/build`,
 //   which leaves the imports that the page's import map names, such as React
 //   and core's React SDK, imports. So no bundle holds any of them.
-// - The builds of the modules take the vendor check that blockr.core ships
-//   beside the preset. It fails the build where a module's bundle would hold
-//   code from node_modules, so that a bundle holds only the DAG's own code,
-//   unminified, and a diff of inst/js shows what an edit of srcts changed.
-//   It fails where a file of the DAG imports dagre or WebCola other than
-//   through the files of VENDORED, below.
+// - An index.css beside a module is its stylesheet, bundled, unminified, into
+//   <name>.css, as the DAG's into graph.css. R serves it beside the module.
+// - The builds of the modules and of their stylesheets take the vendor check
+//   that blockr.core ships beside the preset. It fails the build where one of
+//   those files would hold code from node_modules, so that it holds only the
+//   DAG's own code, unminified, and a diff of inst/js shows what an edit of
+//   srcts changed.
+//   It fails where a file of the DAG imports dagre, WebCola or React Flow
+//   other than through the files of VENDORED, below.
 // - The packages that the DAG bundles from other projects are those that
-//   package.json lists in `dependencies`: dagre and WebCola. Each file of
-//   VENDORED names the part of them that one part of the DAG uses, and is
-//   bundled, minified, into a file of its own, named by the start of its name
-//   in VENDORED and a hash of its content, so that no browser runs an old
+//   package.json lists in `dependencies`: dagre, WebCola and React Flow. Each
+//   file of VENDORED names the part of them that one part of the DAG uses, and
+//   is bundled, minified, into a file of its own, named by the start of its
+//   name in VENDORED and a hash of its content, so that no browser runs an old
 //   copy from its cache:
 //   - WebCola's solver of VPSC, through which the DAG makes room, from
 //     srcts/room/vendor.ts into vpsc-<hash>.js, which the DAG's module imports
@@ -25,10 +29,16 @@
 //     srcts/layout/vendor.ts into dagre-<hash>.js, which the DAG loads only
 //     once it lays a board out, as core bundles the parts of OpenTelemetry's
 //     SDK that it loads on demand into a file of their own.
-//   Each import of such a file, the dynamic one included, becomes an import of
-//   its bundle, beside the module, where R serves it too. The build fails
-//   where such a file imports a package that package.json does not list in
-//   `dependencies`.
+//   - React Flow, which draws the DAG, from srcts/flow/vendor.ts into
+//     xyflow-<hash>.js, which the DAG's module imports up front, and its
+//     stylesheet, from srcts/flow/vendor.css into xyflow-<hash>.css, which the
+//     DAG's stylesheet imports. React Flow's script keeps its imports of
+//     React, which the preset leaves imports, and gets the preset's runtime
+//     of the React Compiler in place of the one that it imports.
+//   Each import of such a file, the dynamic one and a stylesheet's `@import`
+//   included, becomes an import of its bundle, beside the module, where R
+//   serves it too. The build fails where such a file imports a package that
+//   package.json does not list in `dependencies`.
 // - The licenses of what the files in inst/js hold from other projects go
 //   into LICENSES beside them, as blockr.core's build writes its own, since
 //   no bundled file keeps its license. It has a line for each package from
@@ -49,7 +59,8 @@
 //   So the browser fetches them as the page loads, rather than each once the
 //   file that imports it has loaded.
 //   The module imports dagre's bundle only as it runs, so its list leaves that
-//   out, and a bundle that imports others up front has a list of its own.
+//   out, and a bundle that imports others up front has a list of its own, as
+//   React Flow's imports React.
 //
 // The build owns inst/js and empties it first, so that nothing is left of a
 // file that it no longer writes.
@@ -69,17 +80,27 @@ interface Entry {
 }
 
 // The files that name the parts of other projects that the DAG uses, each
-// with the start of the name of the file that bundles them.
-const VENDORED: ReadonlyMap<string, string> = new Map([
+// with the start of the name of the file that bundles them. A script is
+// bundled into a script, and a stylesheet into a stylesheet.
+const VENDORED: readonly (readonly [string, string])[] = [
   ["vpsc", join("srcts", "room", "vendor.ts")],
   ["dagre", join("srcts", "layout", "vendor.ts")],
-]);
+  ["xyflow", join("srcts", "flow", "vendor.ts")],
+  ["xyflow", join("srcts", "flow", "vendor.css")],
+];
 
 // A bundle of vendored parts: its file's name, and the metafile of the build,
 // which says what the file holds.
 interface Vendored {
   readonly file: string;
   readonly metafile: esbuild.Metafile;
+}
+
+// The file that a module's directory starts from, index.ts or, where it draws
+// with React, index.tsx.
+function entryFile(dir: string): string {
+  const tsx = join(dir, "index.tsx");
+  return existsSync(tsx) ? tsx : join(dir, "index.ts");
 }
 
 // The modules, each by the name of the file that it is bundled into and its
@@ -107,20 +128,39 @@ export async function build(root: string): Promise<string[]> {
   }
   const licensed = await licenses(root, out, new Map([...vendored.values()].map(({ file, metafile }) => [file, metafile])));
 
-  const results =
-    entries.length === 0
+  const options = {
+    absWorkingDir: root,
+    outdir: out,
+    logLevel: "warning",
+    metafile: true,
+  } satisfies esbuild.BuildOptions;
+
+  const stylesheets = entries
+    .map((entry) => ({ in: join(entry.dir, "index.css"), out: entry.name }))
+    .filter((entry) => existsSync(entry.in));
+
+  const results = [
+    ...(entries.length === 0
       ? []
       : [
           await esbuild.build({
             ...preset,
-            absWorkingDir: root,
-            outdir: out,
-            logLevel: "warning",
-            metafile: true,
+            ...options,
             plugins: [vendoredImports(vendored), ...preset.plugins, vendorCheck],
-            entryPoints: entries.map((entry) => ({ in: join(entry.dir, "index.ts"), out: entry.name })),
+            entryPoints: entries.map((entry) => ({ in: entryFile(entry.dir), out: entry.name })),
           }),
-        ];
+        ]),
+    ...(stylesheets.length === 0
+      ? []
+      : [
+          await esbuild.build({
+            ...options,
+            bundle: true,
+            plugins: [vendoredImports(vendored), vendorCheck],
+            entryPoints: stylesheets,
+          }),
+        ]),
+  ];
 
   if (results.some((result) => result.warnings.length > 0)) {
     throw new Error("esbuild warned, as printed above");
@@ -157,12 +197,14 @@ async function preloadList(
 }
 
 // Bundles the parts that the file `vendor` names, minified, into one file in
-// `out`, named by `name` and a hash of its content, as dagre-3f2a9c1d.js. The
-// build fails where the file imports a package that package.json does not
-// list in `dependencies`.
+// `out`, named by `name` and a hash of its content, as dagre-3f2a9c1d.js, or
+// xyflow-5b0e7d21.css for a stylesheet. A script takes the build preset, so
+// that React Flow's imports of React stay imports. The build fails where the
+// file imports a package that package.json does not list in `dependencies`.
 async function vendorBundle(root: string, out: string, name: string, vendor: string): Promise<Vendored> {
+  const css = vendor.endsWith(".css");
   const result = await esbuild.build({
-    ...preset,
+    ...(css ? { bundle: true } : preset),
     absWorkingDir: root,
     entryPoints: [vendor],
     write: false,
@@ -186,7 +228,7 @@ async function vendorBundle(root: string, out: string, name: string, vendor: str
   }
 
   const text = result.outputFiles[0]?.text ?? "";
-  const file = `${name}-${createHash("sha256").update(text).digest("hex").slice(0, 8)}.js`;
+  const file = `${name}-${createHash("sha256").update(text).digest("hex").slice(0, 8)}.${css ? "css" : "js"}`;
   await writeFile(join(out, file), text);
   return { file, metafile: result.metafile };
 }
@@ -212,7 +254,8 @@ function packageOf(path: string): string | undefined {
 }
 
 // Leaves each import of a file of VENDORED, as the layout's dynamic import of
-// srcts/layout/vendor.ts, an import of the bundle that vendorBundle() wrote of
+// srcts/layout/vendor.ts or the DAG's stylesheet's `@import` of
+// srcts/flow/vendor.css, an import of the bundle that vendorBundle() wrote of
 // it, by its name beside the module.
 function vendoredImports(vendored: ReadonlyMap<string, Vendored>): esbuild.Plugin {
   return {
