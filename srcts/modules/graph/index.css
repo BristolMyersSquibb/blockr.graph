@@ -156,9 +156,11 @@
 }
 
 /*
- * The status dot, as the dock's card draws it: an 8px dot with a 2px ring in
- * the colour of the canvas's surface, or a ring of 1.5px inside the dot for a
- * block that is waiting or unevaluated.
+ * The status dot, as the dock's card draws it, but on the mark's lower right
+ * corner, which no handle comes near, since the handles on the bottom sit
+ * below the block's name: an 8px dot with a 2px ring in the colour of the
+ * canvas's surface, or a ring of 1.5px inside the dot for a block that is
+ * waiting or unevaluated.
  * The colour of a status is core's, as --bc-color-status-failed. Each falls
  * back to core's value of it under the light theme, which is that of the
  * token that the table of the status dot names
@@ -166,8 +168,8 @@
  */
 .blockr-graph-dot {
   position: absolute;
-  top: -2px;
   right: -2px;
+  bottom: -2px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -191,8 +193,8 @@
  * A handle, 8px across, where the node gives it. It takes the pointer within
  * its size and 4px around it, and never over the node's body, so that a press
  * on the node lands on the node. While the pointer is over it, it grows and
- * takes the accent colour. React Flow keeps its crosshair over a handle that
- * takes links.
+ * takes the accent colour, above the handles beside it where its side is
+ * crowded. React Flow keeps its crosshair over a handle that takes links.
  */
 .blockr-graph .blockr-graph-handle {
   box-sizing: border-box;
@@ -212,6 +214,7 @@
 }
 
 .blockr-graph .blockr-graph-handle:hover {
+  z-index: 1;
   transform: scale(1.5);
   border-color: var(--blockr-graph-accent);
   background-color: var(--blockr-graph-accent);

@@ -126,8 +126,8 @@
 }
 .blockr-graph-dot {
   position: absolute;
-  top: -2px;
   right: -2px;
+  bottom: -2px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -172,6 +172,7 @@
   content: "";
 }
 .blockr-graph .blockr-graph-handle:hover {
+  z-index: 1;
   transform: scale(1.5);
   border-color: var(--blockr-graph-accent);
   background-color: var(--blockr-graph-accent);

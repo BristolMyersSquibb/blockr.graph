@@ -281,6 +281,43 @@ describe("a handle", () => {
     expect(el.querySelector(".blockr-graph-hovered")).toBeNull();
   });
 
+  test("of a crowded side spreads the side out while the pointer is over it, and folds it back once it leaves", async () => {
+    const { el, core } = await mounted();
+    // Three more links into the variadic block e, all from above it, crowd
+    // the top of its mark with six handles.
+    for (const from of ["a", "c", "f"]) {
+      await act(() => core.commands.run("blockr.core-add_link", { from, to: "e" }));
+    }
+    const lefts = () =>
+      [...nodeOf(el, "b:e").querySelectorAll<HTMLElement>('.react-flow__handle[data-handlepos="top"]')].map((handle) => parseFloat(handle.style.left));
+    const crowded = lefts();
+    expect(crowded).toHaveLength(6);
+    const gaps = (at: number[]) => at.slice(1).map((left, i) => left - (at[i] ?? 0));
+    expect(Math.max(...gaps(crowded))).toBeLessThan(12);
+    const handle = nodeOf(el, "b:e").querySelector('.react-flow__handle[data-handlepos="top"]');
+    if (handle === null) throw new Error("No handle");
+    await act(async () => {
+      handle.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
+      await Promise.resolve();
+    });
+    expect(gaps(lefts())).toEqual([12, 12, 12, 12, 12]);
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        handle.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "mouse" }));
+      });
+      // The side stays spread for a moment, so that the pointer moves to the
+      // next handle without it folding back between them.
+      expect(gaps(lefts())).toEqual([12, 12, 12, 12, 12]);
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(lefts()).toEqual(crowded);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("takes no link under the board lock", async () => {
     const open = await mounted();
     expect(open.el.querySelectorAll(".react-flow__handle.connectable").length).toBeGreaterThan(0);

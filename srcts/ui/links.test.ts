@@ -43,6 +43,7 @@ const { nodes } = elementsOf({
   selected: new Set(),
   hovered: null,
   locked: false,
+  spread: null,
 });
 
 describe("a link dropped on a handle", () => {

@@ -25,9 +25,12 @@
 //   the inputs in the order of the class's inputs, those of a variadic block
 //   in the order of their links with the placeholder of its next place last,
 //   and then the result.
-//   A handle on the bottom sits below the block's name. Handles on top of the
-//   mark stay left of the status dot on its upper right corner, and handles
-//   on its right side stay below the dot.
+//   A handle on the bottom sits below the block's name. Handles on the right
+//   side of the mark stay above the status dot on its lower right corner.
+// - The handles of a side stay on the mark: where more share a side than fit
+//   at full distance, they crowd it, closer together, overlapping where they
+//   must. A crowded side spreads out at full distance while the pointer is
+//   over one of its handles, past the mark's ends, and its links follow.
 // - Each node gives React Flow its handles, with where each sits, so that
 //   React Flow measures none of them, and an edge ends where its handle sits
 //   on the first frame.
@@ -45,21 +48,23 @@ export type Side = "top" | "right" | "bottom" | "left";
 // The width and the height of a handle.
 export const HANDLE = 8;
 
-// The least distance between the middles of two handles on one side.
-const HANDLE_STEP = 12;
+// The distance between the middles of two handles on one side, where they fit
+// on the mark at it, and on a crowded side that spreads out.
+export const HANDLE_STEP = 12;
 
-// How far the status dot reaches into the mark from the mark's upper right
-// corner, along the top and along the right side: the dot is 8 px across and
-// sits 2 px out of the corner, with a ring of 2 px around it.
+// How far the status dot reaches into the mark from the mark's lower right
+// corner, along the mark's right side: the dot is 8 px across and sits 2 px
+// out of the corner, with a ring of 2 px around it.
 const DOT_REACH = 8;
 
 // How far a handle reaches from its middle while the pointer is over it, as
 // the DAG's stylesheet grows it to 1.5 times its size.
 const GROWN = (HANDLE * 1.5) / 2;
 
-// How far from the mark's upper right corner the middle of a handle stays,
-// along the top and along the right side, so that no handle touches the
-// status dot, even while the pointer is over it.
+// How far from the mark's lower right corner the middle of a handle on the
+// mark's right side stays, so that no handle touches the status dot, even
+// while the pointer is over it. The handles on the bottom sit below the
+// block's name, far from the dot.
 const DOT_ROOM = DOT_REACH + GROWN;
 
 // The id of the placeholder handle of a variadic block's next place.
@@ -92,6 +97,10 @@ export interface HandleSpec {
   readonly input?: string;
   // Whether a link may start or end at it.
   readonly connectable: boolean;
+  // Whether the handles of its side sit closer than HANDLE_STEP, as where
+  // more of them share the side than fit on the mark at that distance. Such a
+  // side spreads out while the pointer is over one of its handles.
+  readonly crowded: boolean;
 }
 
 export interface BlockData extends Record<string, unknown> {
@@ -148,6 +157,9 @@ export interface Drawing {
   readonly hovered: LinkId | null;
   // Whether the board lock is on, under which no link starts at a handle.
   readonly locked: boolean;
+  // The side of a node, by the node's id, whose crowded handles spread out,
+  // as while the pointer is over one of them, or null for none.
+  readonly spread: { readonly node: string; readonly side: Side } | null;
 }
 
 // Where a block shows: in its own node, centred at its position, or in the
@@ -168,7 +180,7 @@ interface DrawnLink {
 }
 
 export function elementsOf(drawing: Drawing): Elements {
-  const { canvas, registry, layout, selected, hovered, locked } = drawing;
+  const { canvas, registry, layout, selected, hovered, locked, spread } = drawing;
   const { board } = canvas;
   const held = stackOf(board);
   const boxes = new Map<StackId, Box>();
@@ -224,7 +236,8 @@ export function elementsOf(drawing: Drawing): Elements {
     if (point === undefined || (stack !== undefined && canvas.collapsed.has(stack))) continue;
     const entry = registry[block.registry_id];
     const width = blockWidth(block.name);
-    const handles = blockHandles({ board, id, entry, width, layout, links, byId, locked });
+    const spreading = spread?.node === blockNode(id) ? spread.side : null;
+    const handles = blockHandles({ board, id, entry, width, layout, links, byId, locked, spreading });
     const parent = stack === undefined ? undefined : boxes.get(stack);
     nodes.push({
       id: blockNode(id),
@@ -316,13 +329,15 @@ interface BlockArgs {
   readonly links: readonly DrawnLink[];
   readonly byId: ReadonlyMap<LinkId, DrawnLink>;
   readonly locked: boolean;
+  // The side whose crowded handles spread out, or null for none.
+  readonly spreading: Side | null;
 }
 
 // The handles of a block's node, each where it sits.
-function blockHandles({ board, id, entry, width, layout, links, byId, locked }: BlockArgs): HandleSpec[] {
+function blockHandles({ board, id, entry, width, layout, links, byId, locked, spreading }: BlockArgs): HandleSpec[] {
   const into = Object.entries(board.links).filter(([, link]) => link.to === id);
   const name = (block: BlockId) => board.blocks[block]?.name ?? block;
-  const wanted: Omit<HandleSpec, "x" | "y">[] = [];
+  const wanted: Wanted[] = [];
 
   if (isVariadic(entry)) {
     for (const [i, [link, { from, input }]] of into.entries()) {
@@ -373,20 +388,21 @@ function blockHandles({ board, id, entry, width, layout, links, byId, locked }: 
   }
 
   const markLeft = (width - MARK) / 2;
+  const [first, last] = [HANDLE / 2, MARK - HANDLE / 2];
   const lines: Readonly<Record<Side, Line>> = {
-    top: { x: width / 2, y: 0, along: "x", most: markLeft + MARK - DOT_ROOM },
-    bottom: { x: width / 2, y: BLOCK_HEIGHT, along: "x" },
-    left: { x: markLeft, y: MARK / 2, along: "y" },
-    right: { x: markLeft + MARK, y: MARK / 2, along: "y", least: DOT_ROOM },
+    top: { x: width / 2, y: 0, along: "x", lo: markLeft + first, hi: markLeft + last },
+    bottom: { x: width / 2, y: BLOCK_HEIGHT, along: "x", lo: markLeft + first, hi: markLeft + last },
+    left: { x: markLeft, y: MARK / 2, along: "y", lo: first, hi: last },
+    right: { x: markLeft + MARK, y: MARK / 2, along: "y", lo: first, hi: MARK - DOT_ROOM, most: MARK - DOT_ROOM },
   };
-  return spread(wanted, lines, MARK);
+  return placed(wanted, lines, spreading);
 }
 
 // The handles of a collapsed stack's box, where the links between its blocks
 // and blocks outside it end: on each side that one of them uses, one handle
 // for the links into the stack and one for the links out of it.
 function stackHandles(box: Box, links: readonly DrawnLink[], node: string): HandleSpec[] {
-  const wanted: Omit<HandleSpec, "x" | "y">[] = [];
+  const wanted: Wanted[] = [];
   for (const side of SIDES) {
     if (links.some((link) => link.to.node === node && link.in === side)) {
       wanted.push({ id: `in-${side}`, type: "target", side, name: "Links in", label: "Links into the stack", connectable: false });
@@ -395,52 +411,77 @@ function stackHandles(box: Box, links: readonly DrawnLink[], node: string): Hand
       wanted.push({ id: `out-${side}`, type: "source", side, name: "Links out", label: "Links out of the stack", connectable: false });
     }
   }
+  const [first, w, h] = [HANDLE / 2, box.w, box.h];
   const lines: Readonly<Record<Side, Line>> = {
-    top: { x: box.w / 2, y: 0, along: "x" },
-    bottom: { x: box.w / 2, y: box.h, along: "x" },
-    left: { x: 0, y: box.h / 2, along: "y" },
-    right: { x: box.w, y: box.h / 2, along: "y" },
+    top: { x: w / 2, y: 0, along: "x", lo: first, hi: w - first },
+    bottom: { x: w / 2, y: h, along: "x", lo: first, hi: w - first },
+    left: { x: 0, y: h / 2, along: "y", lo: first, hi: h - first },
+    right: { x: w, y: h / 2, along: "y", lo: first, hi: h - first },
   };
-  return spread(wanted, lines, Math.min(box.w, box.h));
+  return placed(wanted, lines, null);
 }
 
 const SIDES: readonly Side[] = ["top", "right", "bottom", "left"];
 
-// The line along which the handles of one side spread: its middle, the axis
-// along which it runs, and the least and the most that the middle of a handle
-// sits at along it, where something else sits beyond, as the status dot does
-// beyond the right end of the mark's top and the top end of its right side.
+// A handle before it has its place.
+type Wanted = Omit<HandleSpec, "x" | "y" | "crowded">;
+
+// The line along which the handles of one side sit: its middle, the axis along
+// which it runs, the least and the most that the middle of a handle reaches
+// along it on the mark, and the most that it reaches even as the side spreads,
+// where the status dot sits beyond.
 interface Line {
   readonly x: number;
   readonly y: number;
   readonly along: "x" | "y";
-  readonly least?: number;
+  readonly lo: number;
+  readonly hi: number;
   readonly most?: number;
 }
 
-// The handles, each placed on its side's line: the handles of one side spread
-// around the line's middle, in the order given, at least HANDLE_STEP apart,
-// and further where the span allows, and move together where the first would
-// sit before the line's `least` or the last past its `most`.
-function spread(wanted: readonly Omit<HandleSpec, "x" | "y">[], lines: Readonly<Record<Side, Line>>, span: number): HandleSpec[] {
-  const placed: HandleSpec[] = [];
+// The handles, each placed on its side's line, in the order given, with the
+// side that spreads out, if any (middles()).
+function placed(wanted: readonly Wanted[], lines: Readonly<Record<Side, Line>>, spreading: Side | null): HandleSpec[] {
+  const out: HandleSpec[] = [];
   for (const side of SIDES) {
     const handles = wanted.filter((handle) => handle.side === side);
-    const step = Math.max(span / (handles.length + 1), HANDLE_STEP);
     const line = lines[side];
-    const middle = line.along === "x" ? line.x : line.y;
-    const first = middle - ((handles.length - 1) / 2) * step;
-    const last = middle + ((handles.length - 1) / 2) * step;
-    const on = line.least === undefined ? 0 : Math.max(0, line.least - first);
-    const back = line.most === undefined ? 0 : Math.max(0, last - line.most);
+    const { at, crowded } = middles(handles.length, line, spreading === side);
     for (const [i, handle] of handles.entries()) {
-      const offset = (i - (handles.length - 1) / 2) * step + on - back;
-      const x = line.along === "x" ? line.x + offset : line.x;
-      const y = line.along === "y" ? line.y + offset : line.y;
-      placed.push({ ...handle, x: x - HANDLE / 2, y: y - HANDLE / 2 });
+      const along = at[i] ?? 0;
+      const x = line.along === "x" ? along : line.x;
+      const y = line.along === "y" ? along : line.y;
+      out.push({ ...handle, crowded, x: x - HANDLE / 2, y: y - HANDLE / 2 });
     }
   }
-  return placed;
+  return out;
+}
+
+// Where the middles of n handles sit along a line, and whether they crowd it:
+//
+// - They sit HANDLE_STEP apart, around the line's middle, moved together to
+//   stay between its `lo` and `hi`, where they fit there at that distance.
+// - Where they do not, they crowd the line: they sit evenly from `lo` to `hi`,
+//   closer than HANDLE_STEP, and they overlap where they must, so that a side
+//   never runs out of room on the mark.
+// - A crowded side that spreads out sits HANDLE_STEP apart again, around the
+//   line's middle and past the mark's ends, but for the end beyond `most`,
+//   where the status dot sits.
+export function middles(n: number, line: Line, spreading: boolean): { at: number[]; crowded: boolean } {
+  const middle = line.along === "x" ? line.x : line.y;
+  const full = Array.from({ length: n }, (_, i) => middle + (i - (n - 1) / 2) * HANDLE_STEP);
+  const [first, last] = [full[0] ?? middle, full.at(-1) ?? middle];
+  const crowded = (n - 1) * HANDLE_STEP > line.hi - line.lo;
+  if (!crowded) {
+    const shift = first < line.lo ? line.lo - first : last > line.hi ? line.hi - last : 0;
+    return { at: full.map((at) => at + shift), crowded };
+  }
+  if (spreading) {
+    const back = line.most === undefined ? 0 : Math.max(0, last - line.most);
+    return { at: full.map((at) => at - back), crowded };
+  }
+  const step = (line.hi - line.lo) / (n - 1);
+  return { at: Array.from({ length: n }, (_, i) => line.lo + i * step), crowded };
 }
 
 const POSITIONS: Readonly<Record<Side, Position>> = {

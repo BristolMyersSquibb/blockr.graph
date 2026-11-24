@@ -25,7 +25,8 @@ import { ReactFlowProvider } from "../flow/index.ts";
 import { Canvas } from "./canvas.tsx";
 import type { Refusal } from "./canvas.tsx";
 import { GraphContext } from "./context.ts";
-import type { Graph } from "./context.ts";
+import type { Entered, Graph } from "./context.ts";
+import type { Side } from "./elements.ts";
 import { SearchPanel } from "./search.tsx";
 import { Controls } from "./toolbar.tsx";
 
@@ -33,9 +34,40 @@ import { Controls } from "./toolbar.tsx";
 // the canvas first.
 const REFUSAL = 8000;
 
+// How long a spread side stays spread once the pointer has left its handles,
+// so that the pointer moves from one handle to the next without the side
+// folding back between them.
+const FOLD = 250;
+
 export function GraphRoot({ core, plugin }: { core: CoreApi; plugin: PluginClassId }): ReactElement {
   const [hovered, setHovered] = useState<LinkId | null>(null);
-  const graph = useMemo<Graph>(() => ({ core, plugin, hover: setHovered }), [core, plugin]);
+  const [spread, setSpread] = useState<{ readonly node: string; readonly side: Side } | null>(null);
+  const fold = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
+      clearTimeout(fold.current);
+    },
+    [],
+  );
+  const graph = useMemo<Graph>(
+    () => ({
+      core,
+      plugin,
+      enter: ({ node, side, link, crowded }: Entered) => {
+        setHovered(link ?? null);
+        clearTimeout(fold.current);
+        setSpread((was) => (!crowded ? was : was?.node === node && was.side === side ? was : { node, side }));
+      },
+      leave: () => {
+        setHovered(null);
+        clearTimeout(fold.current);
+        fold.current = setTimeout(() => {
+          setSpread(null);
+        }, FOLD);
+      },
+    }),
+    [core, plugin],
+  );
   const board = useBoard(core);
   const empty = Object.keys(board.blocks).length === 0;
 
@@ -99,7 +131,7 @@ export function GraphRoot({ core, plugin }: { core: CoreApi; plugin: PluginClass
             (node ?? el).focus({ preventScroll: true });
           }}
         >
-          <Canvas key={board.id} hovered={hovered} size={size} onRefusal={setRefusal} />
+          <Canvas key={board.id} hovered={hovered} spread={spread} size={size} onRefusal={setRefusal} />
           <div className="blockr-graph-tools">
             <Controls
               size={size}

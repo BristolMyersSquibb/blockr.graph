@@ -7,7 +7,7 @@
 //   block registry on a tint of its category's colour, which core's variables
 //   give, as --bc-color-category-transform. A class that the registry lacks
 //   takes the colour of a class without a category, and no icon.
-// - The status dot sits on the mark's upper right corner, filled or a ring,
+// - The status dot sits on the mark's lower right corner, filled or a ring,
 //   in core's colour of the status that it reads, with its tooltip
 //   (./status-dot.ts). It follows the scheduler and the notifications of
 //   CoreApi, and the DAG demands no block for it.
@@ -16,6 +16,9 @@
 //   that feeds it shows as it does while the pointer is over the link, and
 //   after a moment a tooltip names the input. A handle takes the pointer only
 //   within its own size and a small margin around it.
+// - Where more handles share a side than fit on the mark at full distance,
+//   they crowd it, and the side spreads out while the pointer is over one of
+//   them, so that each one is easy to hit (./graph.tsx).
 // - A stack draws in the colour that core keeps on it, or in the colour of
 //   borders where it has none, a default of the DAG's own. Its name sits above
 //   its box, or inside the small box of a collapsed stack, with the number of
@@ -71,7 +74,7 @@ function sameValue(a: unknown, b: unknown): boolean {
   );
 }
 
-function DrawnBlock({ data, selected }: NodeProps<BlockNode>): ReactElement {
+function DrawnBlock({ id, data, selected }: NodeProps<BlockNode>): ReactElement {
   const { core } = useGraph();
   const status = useStatus(core, data.block);
   const notified = useNotified(core, { block: data.block });
@@ -89,7 +92,7 @@ function DrawnBlock({ data, selected }: NodeProps<BlockNode>): ReactElement {
       </span>
       <span className="blockr-graph-name">{data.name}</span>
       {data.handles.map((handle) => (
-        <GraphHandle key={handle.id} handle={handle} />
+        <GraphHandle key={handle.id} node={id} handle={handle} />
       ))}
     </div>
   );
@@ -109,8 +112,8 @@ function Dot({ dot }: { dot: StatusDot }): ReactElement {
   );
 }
 
-function GraphHandle({ handle }: { handle: HandleSpec }): ReactElement {
-  const { hover } = useGraph();
+function GraphHandle({ node, handle }: { node: string; handle: HandleSpec }): ReactElement {
+  const { enter, leave } = useGraph();
   const style: CSSProperties = { left: handle.x, top: handle.y, width: HANDLE, height: HANDLE };
   return (
     <Tip label={handle.label}>
@@ -122,12 +125,11 @@ function GraphHandle({ handle }: { handle: HandleSpec }): ReactElement {
         className="blockr-graph-handle"
         style={style}
         aria-label={handle.label}
+        data-crowded={handle.crowded ? "" : undefined}
         onPointerEnter={() => {
-          if (handle.link !== undefined) hover(handle.link);
+          enter({ node, side: handle.side, ...(handle.link === undefined ? {} : { link: handle.link }), crowded: handle.crowded });
         }}
-        onPointerLeave={() => {
-          hover(null);
-        }}
+        onPointerLeave={leave}
       />
     </Tip>
   );

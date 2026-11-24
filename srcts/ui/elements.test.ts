@@ -3,6 +3,7 @@
 
 import type { BlockRegistry, Board, RegistryEntry } from "@blockr/core";
 import { describe, expect, test } from "vitest";
+import { Position } from "../flow/index.ts";
 import { BLOCK_HEIGHT, blockWidth, canvasOf, changed, expandedBox, MARK, STACK_HEIGHT, STACK_WIDTH } from "../geometry/index.ts";
 import { defaultState, GRAPH } from "../state/index.ts";
 import type { GraphState, Layout } from "../state/index.ts";
@@ -44,6 +45,7 @@ function drawn(board: Board, more: Partial<Drawing> = {}) {
     selected: new Set(),
     hovered: null,
     locked: false,
+    spread: null,
     ...more,
   });
 }
@@ -236,42 +238,87 @@ describe("a handle", () => {
     expect(middle(x).x).toBeLessThan(middle(y).x);
   });
 
-  test("keeps clear of the status dot on the mark's upper right corner, even while it grows under the pointer", () => {
+  // A variadic block t, with links from blocks above it, or to its right,
+  // and its result feeding a block to its right.
+  const variadic = (links: number, from: "above" | "right") => {
+    const blocks: Record<string, string> = { t: "blockr.core-rbind_block", z: "blockr.core-head_block" };
+    const all: Record<string, { from: string; to: string; input: string }> = { tz: { from: "t", to: "z", input: "data" } };
+    const positions: Record<string, { x: number; y: number }> = { t: { x: 0, y: 0 }, z: { x: 300, y: 20 } };
+    for (let i = 0; i < links; i += 1) {
+      blocks[`s${String(i)}`] = "blockr.core-dataset_block";
+      positions[`s${String(i)}`] = from === "above" ? { x: -200 + 40 * i, y: -200 } : { x: 250, y: -40 + 10 * i };
+      all[`l${String(i)}`] = { from: `s${String(i)}`, to: "t", input: "" };
+    }
+    return classed(blocks, all, positions);
+  };
+
+  // The middles of a side's handles, along the side, relative to the mark's
+  // left or top edge.
+  const along = (node: BlockNode, side: string) => {
+    const left = ((node.width ?? 0) - MARK) / 2;
+    return node.data.handles
+      .filter((each) => each.side === side)
+      .map((each) => (side === "top" || side === "bottom" ? middle(each).x - left : middle(each).y));
+  };
+
+  test("sit 12 px apart on the mark's side where they fit there, and crowd it where they do not", () => {
+    // Two links and the placeholder of the next place fit on top.
+    const three = blockNode(drawn(variadic(2, "above")).nodes, "t");
+    expect(along(three, "top")).toEqual([4, 16, 28]);
+    expect(three.data.handles.filter((each) => each.side === "top").every((each) => !each.crowded)).toBe(true);
+    // Four links and the placeholder crowd the top, 6 px apart, and eight
+    // links and the placeholder 3 px apart, from one end of the mark to the
+    // other.
+    const five = blockNode(drawn(variadic(4, "above")).nodes, "t");
+    expect(along(five, "top")).toEqual([4, 10, 16, 22, 28]);
+    expect(five.data.handles.filter((each) => each.side === "top").every((each) => each.crowded)).toBe(true);
+    expect(along(blockNode(drawn(variadic(8, "above")).nodes, "t"), "top")).toEqual([4, 7, 10, 13, 16, 19, 22, 25, 28]);
+  });
+
+  test("of a crowded side spread out 12 px apart as the drawing names the side, around the mark's middle", () => {
+    const board = variadic(4, "above");
+    const spread = blockNode(drawn(board, { spread: { node: "b:t", side: "top" } }).nodes, "t");
+    expect(along(spread, "top")).toEqual([-8, 4, 16, 28, 40]);
+    // A side that fits on the mark sits as it does, whichever side spreads.
+    const fits = blockNode(drawn(variadic(2, "above"), { spread: { node: "b:t", side: "top" } }).nodes, "t");
+    expect(along(fits, "top")).toEqual([4, 16, 28]);
+    // The spread side's handles give React Flow where they sit, so that the
+    // links follow them.
+    expect(spread.handles?.filter((each) => each.position === Position.Top).map((each) => each.x + HANDLE / 2 - ((spread.width ?? 0) - MARK) / 2)).toEqual([
+      -8, 4, 16, 28, 40,
+    ]);
+  });
+
+  test("on the right side stay above the status dot on the mark's lower right corner, crowded or spread", () => {
+    const board = variadic(3, "right");
+    const crowded = blockNode(drawn(board).nodes, "t");
+    const right = along(crowded, "right");
+    expect(right).toHaveLength(4);
+    expect(Math.min(...right)).toBe(4);
+    expect(Math.max(...right)).toBe(MARK - 14);
+    const spread = along(blockNode(drawn(board, { spread: { node: "b:t", side: "right" } }).nodes, "t"), "right");
+    expect(spread.slice(1).map((at, i) => at - (spread[i] ?? 0))).toEqual([12, 12, 12]);
+    expect(Math.max(...spread)).toBe(MARK - 14);
+  });
+
+  test("keeps clear of the status dot on the mark's lower right corner, even while it grows under the pointer", () => {
     // The dot, as the stylesheet draws it: 8 px across, 2 px out of the
-    // mark's upper right corner, with a ring of 2 px, relative to the mark's
+    // mark's lower right corner, with a ring of 2 px, relative to the mark's
     // top left corner. A handle reaches 6 px from its middle while it grows
     // to 1.5 times its size.
-    const dot = { left: MARK - 8, right: MARK + 4, top: -4, bottom: 8 };
+    const dot = { left: MARK - 8, right: MARK + 4, top: MARK - 8, bottom: MARK + 4 };
     const grown = (HANDLE * 1.5) / 2;
-    const sources = (n: number, at: (i: number) => { x: number; y: number }) => {
-      const blocks: Record<string, string> = { t: "blockr.core-merge_block" };
-      const links: Record<string, { from: string; to: string; input: string }> = {};
-      const positions: Record<string, { x: number; y: number }> = { t: { x: 0, y: 0 } };
-      for (let i = 0; i < n; i += 1) {
-        blocks[`s${String(i)}`] = "blockr.core-dataset_block";
-        positions[`s${String(i)}`] = at(i);
-      }
-      if (n > 0) links.l0 = { from: "s0", to: "t", input: "x" };
-      if (n > 1) links.l1 = { from: "s1", to: "t", input: "y" };
-      return { blocks, links, positions };
-    };
-    const crowded = [
-      // Two inputs from above, and the result there too.
-      { ...sources(2, (i) => ({ x: -100 + 200 * i, y: -150 })), feeds: { x: 50, y: -300 } },
-      // Two inputs from the right, and the result there too.
-      { ...sources(2, (i) => ({ x: 200, y: -10 + 20 * i })), feeds: { x: 250, y: 30 } },
-      // One input from the right, and the result there too.
-      { ...sources(1, () => ({ x: 200, y: -10 })), feeds: { x: 250, y: 30 } },
-    ];
-    for (const { blocks, links, positions, feeds } of crowded) {
-      const board = classed({ ...blocks, z: "blockr.core-head_block" }, { ...links, tz: { from: "t", to: "z", input: "data" } }, { ...positions, z: feeds });
-      const t = blockNode(drawn(board).nodes, "t");
-      const left = ((t.width ?? 0) - MARK) / 2;
-      expect(t.data.handles.filter((each) => each.side === "top" || each.side === "right").length).toBeGreaterThanOrEqual(2);
-      for (const spec of t.data.handles) {
-        const { x, y } = middle(spec);
-        const apart = Math.max(dot.left - (x - left + grown), x - left - grown - dot.right, dot.top - (y + grown), y - grown - dot.bottom);
-        expect(apart, `${spec.id} on ${spec.side}`).toBeGreaterThanOrEqual(0);
+    const boards = [variadic(2, "above"), variadic(4, "above"), variadic(1, "right"), variadic(3, "right"), variadic(8, "right")];
+    const sides = ["top", "right", "bottom", "left"] as const;
+    for (const board of boards) {
+      for (const spread of [null, ...sides.map((side) => ({ node: "b:t", side }))]) {
+        const t = blockNode(drawn(board, { spread }).nodes, "t");
+        const left = ((t.width ?? 0) - MARK) / 2;
+        for (const spec of t.data.handles) {
+          const { x, y } = middle(spec);
+          const apart = Math.max(dot.left - (x - left + grown), x - left - grown - dot.right, dot.top - (y + grown), y - grown - dot.bottom);
+          expect(apart, `${spec.id} on ${spec.side}`).toBeGreaterThanOrEqual(0);
+        }
       }
     }
   });
@@ -382,7 +429,7 @@ describe("a stack", () => {
     const board = stacked({});
     const state = board.plugins[GRAPH] as GraphState;
     const moved = changed(canvasOf(board, state), { positions: { b: { x: -200, y: 150 } }, points: {} });
-    const { nodes } = elementsOf({ canvas: moved, registry: REGISTRY, layout: state.layout, selected: new Set(), hovered: null, locked: false });
+    const { nodes } = elementsOf({ canvas: moved, registry: REGISTRY, layout: state.layout, selected: new Set(), hovered: null, locked: false, spread: null });
     const box = expandedBox(moved, "s1");
     expect(stackNode(nodes, "s1").position).toEqual({ x: box?.x, y: box?.y });
   });

@@ -1,18 +1,33 @@
 // What the components that draw the DAG share: CoreApi, the id of the
-// plugin's class, and what a node tells the canvas, through a React context
+// plugin's class, and what a handle tells the canvas, through a React context
 // of the DAG's own root.
 
 import type { CoreApi, LinkId, PluginClassId } from "@blockr/core";
 import { createContext, useContext } from "react";
+import type { Side } from "./elements.ts";
+
+// A handle that the pointer enters: its node, by the node's id, its side, the
+// link that feeds it, if any, and whether its side is crowded.
+export interface Entered {
+  readonly node: string;
+  readonly side: Side;
+  readonly link?: LinkId;
+  readonly crowded: boolean;
+}
 
 export interface Graph {
   readonly core: CoreApi;
   // The id of the plugin's class, under which the board holds the DAG's
   // state.
   readonly plugin: PluginClassId;
-  // Shows the link as it shows while the pointer is over it, or none, as the
-  // pointer enters and leaves the handle of the input that the link feeds.
-  readonly hover: (link: LinkId | null) => void;
+  // As the pointer enters a handle: shows the link that feeds it as the link
+  // shows while the pointer is over it, and spreads out its side where the
+  // side is crowded.
+  readonly enter: (handle: Entered) => void;
+  // As the pointer leaves a handle: shows the link as before, and folds a
+  // spread side back once the pointer has entered none of its handles for a
+  // moment.
+  readonly leave: () => void;
 }
 
 export const GraphContext = createContext<Graph | null>(null);

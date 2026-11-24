@@ -46,7 +46,7 @@ import { defaultState, graphState } from "../state/index.ts";
 import type { Point } from "../state/index.ts";
 import { useGraph } from "./context.ts";
 import { elementsOf } from "./elements.ts";
-import type { GraphEdge, GraphNode } from "./elements.ts";
+import type { Drawing, GraphEdge, GraphNode } from "./elements.ts";
 import { blockNode } from "./ids.ts";
 import { LinkView } from "./link.tsx";
 import { linkDrop } from "./links.ts";
@@ -86,12 +86,14 @@ export interface Refusal {
 
 export interface CanvasProps {
   readonly hovered: LinkId | null;
+  // The crowded side of a node that spreads out, or null for none.
+  readonly spread: Drawing["spread"];
   // The size of the DAG's element, which is 0 by 0 until it is laid out.
   readonly size: { readonly width: number; readonly height: number };
   readonly onRefusal: (refusal: Refusal | null) => void;
 }
 
-export function Canvas({ hovered, size, onRefusal }: CanvasProps): ReactElement {
+export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): ReactElement {
   const { core, plugin } = useGraph();
   const board = useBoard(core);
   const selection = useSyncExternalStore(
@@ -115,8 +117,8 @@ export function Canvas({ hovered, size, onRefusal }: CanvasProps): ReactElement 
   const canvas = useMemo(() => changed(base, moves), [base, moves]);
   const selected = useMemo(() => selectedIds(selection), [selection]);
   const { nodes, edges } = useMemo(
-    () => elementsOf({ canvas, registry, layout, selected, hovered, locked }),
-    [canvas, registry, layout, selected, hovered, locked],
+    () => elementsOf({ canvas, registry, layout, selected, hovered, locked, spread }),
+    [canvas, registry, layout, selected, hovered, locked, spread],
   );
 
   // The nodes and the edges drawn last, which the selection reads as it
