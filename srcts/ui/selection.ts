@@ -16,8 +16,10 @@
 // - Where the user selects one block alone, the DAG shows it through
 //   core.show(), while a selection of several shows none, and neither does a
 //   selection of a link or a stack.
+// - A right click on an object of a selection of several opens the
+//   selection's menu, rather than the object's.
 
-import type { BlockId, BoardObject } from "@blockr/core";
+import type { BlockId, BoardObject, Target } from "@blockr/core";
 import { idOf, objectOf } from "./ids.ts";
 
 // A change that React Flow reports, of whether a node or an edge is selected.
@@ -77,6 +79,14 @@ export function sameSelection(a: readonly BoardObject[], b: readonly BoardObject
   if (a.length !== b.length) return false;
   const keys = new Set(a.map((object) => JSON.stringify(object)));
   return b.every((object) => keys.has(JSON.stringify(object)));
+}
+
+// The target of the menu that a right click on a board object opens: the
+// selection, where the object is one of several that the user selected, and
+// otherwise the object alone.
+export function menuTarget(object: BoardObject, selection: readonly BoardObject[]): Target {
+  const key = JSON.stringify(object);
+  return selection.length > 1 && selection.some((each) => JSON.stringify(each) === key) ? { selection } : object;
 }
 
 // The block that the selection shows: its block, where it holds one block

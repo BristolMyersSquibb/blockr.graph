@@ -3,7 +3,7 @@
 
 import type { BoardObject } from "@blockr/core";
 import { describe, expect, test } from "vitest";
-import { sameSelection, selectedIds, selectionAfter, shownBlock } from "./selection.ts";
+import { menuTarget, sameSelection, selectedIds, selectionAfter, shownBlock } from "./selection.ts";
 
 const DRAWN = new Set(["b:a", "b:b", "b:c", "s:s1", "l:ab", "l:bc", "l:ca"]);
 
@@ -62,5 +62,14 @@ describe("a selection", () => {
     expect(sameSelection([{ block: "a" }, { link: "ab" }], [{ link: "ab" }, { block: "a" }])).toBe(true);
     expect(sameSelection([{ block: "a" }], [{ block: "a" }, { block: "b" }])).toBe(false);
     expect(sameSelection([{ block: "a" }], [{ stack: "a" }])).toBe(false);
+  });
+});
+
+describe("a right click", () => {
+  test("on an object of a selection of several opens the selection's menu, and otherwise the object's", () => {
+    const selection = [{ block: "a" }, { link: "ab" }];
+    expect(menuTarget({ link: "ab" }, selection)).toEqual({ selection });
+    expect(menuTarget({ block: "b" }, selection)).toEqual({ block: "b" });
+    expect(menuTarget({ block: "a" }, [{ block: "a" }])).toEqual({ block: "a" });
   });
 });

@@ -1,6 +1,7 @@
 // The root of the DAG's UI, which draws the canvas, its toolbar, the panel of
-// search and the outline, the empty board's line and why a link was refused,
-// in the element that the frontend gives the DAG's module
+// search and the outline, the panel of advanced actions, the empty board's
+// line and why the board took nothing that the user asked for, in the element
+// that the frontend gives the DAG's module
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#the-canvas).
 //
 // - The canvas fills the element and sizes itself from it. Where the element
@@ -15,23 +16,33 @@
 // - The DAG's element takes the keyboard's focus as the user presses on the
 //   canvas, since React Flow makes each node focusable, but not the canvas
 //   around the nodes, so that the DAG's keys act after a click on the canvas
-//   or a drawn rectangle, as after a click on a node.
+//   or a drawn rectangle, as after a click on a node. The keys act on the
+//   DAG's element alone (./keys.ts).
+// - The DAG shows why the board took no link that the user dropped, and a
+//   batch that the store or the command registry refused, where the user
+//   dropped the link, opened the menu or triggered the board action, until
+//   the user presses on the DAG or a moment has passed.
 
 import type { CoreApi, LinkId, PluginClassId } from "@blockr/core";
 import { useBoard } from "@blockr/core/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { ReactFlowProvider } from "../flow/index.ts";
+import { ReactFlowProvider, useReactFlow } from "../flow/index.ts";
+import type { Point } from "../state/index.ts";
+import { useGraphActions } from "./actions.ts";
 import { Canvas } from "./canvas.tsx";
 import type { Refusal } from "./canvas.tsx";
 import { GraphContext } from "./context.ts";
 import type { Entered, Graph } from "./context.ts";
 import type { Side } from "./elements.ts";
+import { keyAction } from "./keys.ts";
+import { usePanel } from "./panel.tsx";
 import { SearchPanel } from "./search.tsx";
 import { Controls } from "./toolbar.tsx";
+import { DURATION } from "./view.ts";
 
-// How long the DAG shows why a link was refused, unless the user presses on
-// the canvas first.
+// How long the DAG shows why the board took nothing, unless the user presses
+// on the DAG first.
 const REFUSAL = 8000;
 
 // How long a spread side stays spread once the pointer has left its handles,
@@ -40,6 +51,15 @@ const REFUSAL = 8000;
 const FOLD = 250;
 
 export function GraphRoot({ core, plugin }: { core: CoreApi; plugin: PluginClassId }): ReactElement {
+  return (
+    <ReactFlowProvider>
+      <GraphFrame core={core} plugin={plugin} />
+    </ReactFlowProvider>
+  );
+}
+
+function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }): ReactElement {
+  const flow = useReactFlow();
   const [hovered, setHovered] = useState<LinkId | null>(null);
   const [spread, setSpread] = useState<{ readonly node: string; readonly side: Side } | null>(null);
   const fold = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -49,6 +69,40 @@ export function GraphRoot({ core, plugin }: { core: CoreApi; plugin: PluginClass
     },
     [],
   );
+
+  const element = useRef<HTMLDivElement>(null);
+  const elementOf = useCallback(() => element.current, []);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const refuse = useCallback((client: Point, message: string) => {
+    const box = element.current?.getBoundingClientRect();
+    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message });
+  }, []);
+  useEffect(() => {
+    if (refusal === null) return;
+    const timer = setTimeout(() => {
+      setRefusal(null);
+    }, REFUSAL);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [refusal]);
+
+  const pan = useCallback(
+    (by: { readonly x: number; readonly y: number }) => {
+      const { x, y, zoom } = flow.getViewport();
+      void flow.setViewport({ x: x + by.x, y: y + by.y, zoom }, { duration: DURATION });
+    },
+    [flow],
+  );
+  const panel = usePanel({ core, element: elementOf, pan });
+  const actions = useGraphActions({
+    core,
+    element: elementOf,
+    toCanvas: (client) => flow.screenToFlowPosition(client),
+    refuse,
+    panel: panel.advanced,
+  });
+
   const graph = useMemo<Graph>(
     () => ({
       core,
@@ -65,13 +119,13 @@ export function GraphRoot({ core, plugin }: { core: CoreApi; plugin: PluginClass
           setSpread(null);
         }, FOLD);
       },
+      actions,
     }),
-    [core, plugin],
+    [actions, core, plugin],
   );
   const board = useBoard(core);
   const empty = Object.keys(board.blocks).length === 0;
 
-  const element = useRef<HTMLDivElement>(null);
   const [own, setOwn] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
@@ -103,57 +157,51 @@ export function GraphRoot({ core, plugin }: { core: CoreApi; plugin: PluginClass
     setSearching(false);
   }, []);
 
-  const [refusal, setRefusal] = useState<Refusal | null>(null);
-  useEffect(() => {
-    if (refusal === null) return;
-    const timer = setTimeout(() => {
-      setRefusal(null);
-    }, REFUSAL);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [refusal]);
-
   return (
     <GraphContext value={graph}>
-      <ReactFlowProvider>
-        <div
-          ref={element}
-          className="blockr-graph"
-          data-height={own ? "own" : undefined}
-          tabIndex={-1}
-          onPointerDown={(event) => {
-            setRefusal(null);
-            const el = element.current;
-            const target = event.target;
-            if (el === null || !(target instanceof Element) || target.closest(".react-flow__pane") === null) return;
-            const node = target.closest<HTMLElement>(".react-flow__node");
-            (node ?? el).focus({ preventScroll: true });
-          }}
-        >
-          <Canvas key={board.id} hovered={hovered} spread={spread} size={size} onRefusal={setRefusal} />
-          <div className="blockr-graph-tools">
-            <Controls
-              size={size}
-              searching={searching}
-              onSearch={() => {
-                setSearching((open) => !open);
-              }}
-            />
-            {searching ? <SearchPanel onClose={closeSearch} /> : null}
-          </div>
-          {empty ? (
-            <p className="blockr-graph-empty">
-              {core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one."}
-            </p>
-          ) : null}
-          {refusal === null ? null : (
-            <div className="blockr-graph-refusal" role="alert" style={{ left: refusal.x, top: refusal.y }}>
-              {refusal.message}
-            </div>
-          )}
+      <div
+        ref={element}
+        className="blockr-graph"
+        data-height={own ? "own" : undefined}
+        tabIndex={-1}
+        onPointerDown={(event) => {
+          setRefusal(null);
+          const el = element.current;
+          const target = event.target;
+          if (el === null || !(target instanceof Element) || target.closest(".react-flow__pane") === null) return;
+          const node = target.closest<HTMLElement>(".react-flow__node");
+          (node ?? el).focus({ preventScroll: true });
+        }}
+        onKeyDown={(event) => {
+          if (event.defaultPrevented) return;
+          const text = event.currentTarget.ownerDocument.getSelection()?.toString() ?? "";
+          const action = keyAction(event, core.selection.get(), text !== "");
+          if (action === undefined) return;
+          event.preventDefault();
+          void actions.trigger(action.id, action.target, { key: true });
+        }}
+      >
+        <Canvas key={board.id} hovered={hovered} spread={spread} size={size} onRefusal={setRefusal} />
+        <div className="blockr-graph-tools">
+          <Controls
+            size={size}
+            searching={searching}
+            onSearch={() => {
+              setSearching((open) => !open);
+            }}
+          />
+          {searching ? <SearchPanel onClose={closeSearch} /> : null}
         </div>
-      </ReactFlowProvider>
+        {empty ? (
+          <p className="blockr-graph-empty">{core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one."}</p>
+        ) : null}
+        {panel.view}
+        {refusal === null ? null : (
+          <div className="blockr-graph-refusal" role="alert" style={{ left: refusal.x, top: refusal.y }}>
+            {refusal.message}
+          </div>
+        )}
+      </div>
     </GraphContext>
   );
 }

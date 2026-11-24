@@ -341,6 +341,59 @@
   color: var(--blockr-graph-muted);
   font-size: 13px;
 }
+.blockr-graph .blockr-graph-separator {
+  width: 20px;
+  margin: 3px auto;
+}
+.blockr-graph-action-icon {
+  display: inline-flex;
+}
+.blockr-graph-action-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.blockr-graph-initial {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+.blockr-graph-panel {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--blockr-graph-border);
+  border-radius: 8px;
+  background: var(--blockr-graph-raised);
+  box-shadow: 0 4px 16px color-mix(in oklab, CanvasText 18%, transparent);
+}
+.blockr-graph-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 6px 12px;
+  border-bottom: 1px solid var(--blockr-graph-border);
+}
+.blockr-graph-panel-title {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.blockr-graph .blockr-graph-panel-control {
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+.blockr-graph-panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
 .blockr-graph-empty {
   position: absolute;
   top: 50%;

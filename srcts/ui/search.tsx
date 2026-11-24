@@ -9,8 +9,9 @@
 //   its blocks, and then the blocks in no stack (./outline.ts). A stack that
 //   is collapsed on the canvas shows folded, while folding a row leaves the
 //   canvas alone.
-// - Picking a row moves the view to the block or the stack and selects it, so
-//   that picking a block shows it, as a click on its node does. Picking a
+// - Picking a row moves the view to the block or the stack and selects it once
+//   the view has reached it, so that picking a block shows it, as a click on
+//   its node does. Picking a
 //   block of a collapsed stack expands the stack first, through
 //   blockr.graph-collapse_stack, which moves the blocks around the stack and
 //   takes an undo step, as any expand does.
@@ -57,7 +58,9 @@ export function SearchPanel({ onClose }: { onClose: () => void }): ReactElement 
     };
   }, [onClose]);
 
-  // Moves the view to the block or the stack, selects it, and shows a block.
+  // Moves the view to the block or the stack, selects it once the view has
+  // reached it, so that what follows the selection, as a pinned panel of
+  // advanced actions, finds it where it ends, and shows a block.
   const pick = async (key: string) => {
     const object = objectOf(key);
     if (object === undefined) return;
@@ -70,7 +73,7 @@ export function SearchPanel({ onClose }: { onClose: () => void }): ReactElement 
     }
     const now = core.store.board();
     const centre = centreOf(canvasOf(now, graphState(now, plugin) ?? defaultState), key);
-    if (centre !== undefined) void flow.setCenter(centre.x, centre.y, { zoom: flow.getZoom(), duration: DURATION });
+    if (centre !== undefined) await flow.setCenter(centre.x, centre.y, { zoom: flow.getZoom(), duration: DURATION });
     const picked: BoardObject[] = [object];
     core.selection.set(picked);
     if ("block" in object) core.show({ block: object.block }).catch(() => undefined);

@@ -22,6 +22,9 @@ export function saveView(board: string, view: Viewport): void {
   views.set(board, { x: view.x, y: view.y, zoom: view.zoom });
 }
 
+// How long the view takes to zoom, fit or pan on the screen.
+export const DURATION = 200;
+
 // The zooms between which the user zooms the canvas.
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 2;

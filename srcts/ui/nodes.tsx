@@ -16,6 +16,12 @@
 //   that feeds it shows as it does while the pointer is over the link, and
 //   after a moment a tooltip names the input. A handle takes the pointer only
 //   within its own size and a small margin around it.
+// - A right click on the handle of an input opens the menu of the link that
+//   feeds it, or where no link feeds it, the menu of the input, as
+//   { block: "b", input: "y" }, or for a variadic block's placeholder
+//   { block: "b", input: "" }, whatever the selection holds, since no
+//   selection holds an input. A right click on a result's handle opens the
+//   block's menu, as on the rest of the node.
 // - Where more handles share a side than fit on the mark at full distance,
 //   they crowd it, and the side spreads out while the pointer is over one of
 //   them, so that each one is easy to hit (./graph.tsx).
@@ -26,15 +32,16 @@
 //   has a button that collapses or expands it, as a double click on its box
 //   does (./canvas.tsx).
 
-import type { RegistryEntry } from "@blockr/core";
+import type { BlockId, RegistryEntry, Target } from "@blockr/core";
 import { Button, useNotified, useStatus } from "@blockr/core/react";
 import { memo } from "react";
-import type { CSSProperties, ReactElement } from "react";
+import type { CSSProperties, MouseEvent, ReactElement } from "react";
 import { Handle } from "../flow/index.ts";
 import type { NodeProps } from "../flow/index.ts";
 import { useGraph } from "./context.ts";
 import { HANDLE, positionOf } from "./elements.ts";
 import type { BlockNode, HandleSpec, StackNode } from "./elements.ts";
+import { objectOf } from "./ids.ts";
 import { statusDot } from "./status-dot.ts";
 import type { StatusDot } from "./status-dot.ts";
 import { Tip } from "./tip.tsx";
@@ -113,8 +120,10 @@ function Dot({ dot }: { dot: StatusDot }): ReactElement {
 }
 
 function GraphHandle({ node, handle }: { node: string; handle: HandleSpec }): ReactElement {
-  const { enter, leave } = useGraph();
+  const { enter, leave, actions } = useGraph();
   const style: CSSProperties = { left: handle.x, top: handle.y, width: HANDLE, height: HANDLE };
+  const object = objectOf(node);
+  const target = object !== undefined && "block" in object ? handleTarget(object.block, handle) : undefined;
   return (
     <Tip label={handle.label}>
       <Handle
@@ -130,9 +139,26 @@ function GraphHandle({ node, handle }: { node: string; handle: HandleSpec }): Re
           enter({ node, side: handle.side, ...(handle.link === undefined ? {} : { link: handle.link }), crowded: handle.crowded });
         }}
         onPointerLeave={leave}
+        {...(target === undefined
+          ? {}
+          : {
+              onContextMenu: (event: MouseEvent<HTMLDivElement>) => {
+                event.preventDefault();
+                event.stopPropagation();
+                actions.menu(target, { x: event.clientX, y: event.clientY });
+              },
+            })}
       />
     </Tip>
   );
+}
+
+// The target of the menu of a block's handle: the link that feeds the input,
+// the input where no link feeds it, or undefined for the block's result.
+export function handleTarget(block: BlockId, handle: HandleSpec): Target | undefined {
+  if (handle.type === "source") return undefined;
+  if (handle.link !== undefined) return { link: handle.link };
+  return handle.input === undefined ? undefined : { block, input: handle.input };
 }
 
 function DrawnStack({ data, selected }: NodeProps<StackNode>): ReactElement {
