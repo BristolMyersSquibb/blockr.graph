@@ -12,7 +12,7 @@ import { canvasDrop, linkDrop } from "./links.ts";
 import { handleTarget } from "./nodes.tsx";
 
 function entry(id: string, inputs: readonly string[]): RegistryEntry {
-  return { id, name: id, description: "", keywords: [], category: "", icon: "", inputs, module: "", version: 1, schema: {}, state: {}, requests: {} };
+  return { id, name: id, description: "", keywords: [], category: "", icon: "", inputs, module: "", version: 1, schema: {}, block_name: id, state: {}, requests: {} };
 }
 
 const REGISTRY: BlockRegistry = {

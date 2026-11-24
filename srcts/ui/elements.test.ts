@@ -24,6 +24,7 @@ function entry(id: string, inputs: readonly string[], category = "transform"): R
     module: "",
     version: 1,
     schema: {},
+    block_name: id,
     state: {},
     requests: {},
   };
