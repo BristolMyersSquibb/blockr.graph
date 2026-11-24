@@ -236,17 +236,53 @@ describe("a handle", () => {
     expect(middle(x).x).toBeLessThan(middle(y).x);
   });
 
-  test("on top of the mark keeps clear of the status dot on its upper right corner", () => {
-    const board = classed(
-      { a: "blockr.core-dataset_block", b: "blockr.core-dataset_block", e: "blockr.core-rbind_block" },
-      { ae: { from: "a", to: "e", input: "" }, be: { from: "b", to: "e", input: "" } },
-      { a: { x: -50, y: 0 }, b: { x: 50, y: 0 }, e: { x: 0, y: 150 } },
-    );
-    const e = blockNode(drawn(board).nodes, "e");
-    const right = ((e.width ?? 0) + MARK) / 2;
-    for (const spec of e.data.handles.filter((each) => each.side === "top")) {
-      expect(middle(spec).x).toBeLessThanOrEqual(right - 10);
+  test("keeps clear of the status dot on the mark's upper right corner, even while it grows under the pointer", () => {
+    // The dot, as the stylesheet draws it: 8 px across, 2 px out of the
+    // mark's upper right corner, with a ring of 2 px, relative to the mark's
+    // top left corner. A handle reaches 6 px from its middle while it grows
+    // to 1.5 times its size.
+    const dot = { left: MARK - 8, right: MARK + 4, top: -4, bottom: 8 };
+    const grown = (HANDLE * 1.5) / 2;
+    const sources = (n: number, at: (i: number) => { x: number; y: number }) => {
+      const blocks: Record<string, string> = { t: "blockr.core-merge_block" };
+      const links: Record<string, { from: string; to: string; input: string }> = {};
+      const positions: Record<string, { x: number; y: number }> = { t: { x: 0, y: 0 } };
+      for (let i = 0; i < n; i += 1) {
+        blocks[`s${String(i)}`] = "blockr.core-dataset_block";
+        positions[`s${String(i)}`] = at(i);
+      }
+      if (n > 0) links.l0 = { from: "s0", to: "t", input: "x" };
+      if (n > 1) links.l1 = { from: "s1", to: "t", input: "y" };
+      return { blocks, links, positions };
+    };
+    const crowded = [
+      // Two inputs from above, and the result there too.
+      { ...sources(2, (i) => ({ x: -100 + 200 * i, y: -150 })), feeds: { x: 50, y: -300 } },
+      // Two inputs from the right, and the result there too.
+      { ...sources(2, (i) => ({ x: 200, y: -10 + 20 * i })), feeds: { x: 250, y: 30 } },
+      // One input from the right, and the result there too.
+      { ...sources(1, () => ({ x: 200, y: -10 })), feeds: { x: 250, y: 30 } },
+    ];
+    for (const { blocks, links, positions, feeds } of crowded) {
+      const board = classed({ ...blocks, z: "blockr.core-head_block" }, { ...links, tz: { from: "t", to: "z", input: "data" } }, { ...positions, z: feeds });
+      const t = blockNode(drawn(board).nodes, "t");
+      const left = ((t.width ?? 0) - MARK) / 2;
+      expect(t.data.handles.filter((each) => each.side === "top" || each.side === "right").length).toBeGreaterThanOrEqual(2);
+      for (const spec of t.data.handles) {
+        const { x, y } = middle(spec);
+        const apart = Math.max(dot.left - (x - left + grown), x - left - grown - dot.right, dot.top - (y + grown), y - grown - dot.bottom);
+        expect(apart, `${spec.id} on ${spec.side}`).toBeGreaterThanOrEqual(0);
+      }
     }
+  });
+
+  test("on a side alone sits in the middle of the side", () => {
+    const board = classed({ a: "blockr.core-dataset_block", b: "blockr.core-head_block" }, { ab: { from: "a", to: "b", input: "data" } }, {
+      a: { x: 200, y: 0 },
+      b: { x: 0, y: 0 },
+    });
+    const b = blockNode(drawn(board).nodes, "b");
+    expect(middle(handle(b, "in:data#ab"))).toEqual({ x: ((b.width ?? 0) + MARK) / 2, y: MARK / 2 });
   });
 
   test("of a variadic block is one for each link into it, in their order, and a placeholder for its next place", () => {

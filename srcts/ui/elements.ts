@@ -25,7 +25,9 @@
 //   the inputs in the order of the class's inputs, those of a variadic block
 //   in the order of their links with the placeholder of its next place last,
 //   and then the result.
-//   A handle on the bottom sits below the block's name.
+//   A handle on the bottom sits below the block's name. Handles on top of the
+//   mark stay left of the status dot on its upper right corner, and handles
+//   on its right side stay below the dot.
 // - Each node gives React Flow its handles, with where each sits, so that
 //   React Flow measures none of them, and an edge ends where its handle sits
 //   on the first frame.
@@ -46,10 +48,19 @@ export const HANDLE = 8;
 // The least distance between the middles of two handles on one side.
 const HANDLE_STEP = 12;
 
-// How far left of the mark's right edge the middle of a handle on top of the
-// mark stays, so that it sits clear of the status dot on the mark's upper
-// right corner.
-const DOT_ROOM = 10;
+// How far the status dot reaches into the mark from the mark's upper right
+// corner, along the top and along the right side: the dot is 8 px across and
+// sits 2 px out of the corner, with a ring of 2 px around it.
+const DOT_REACH = 8;
+
+// How far a handle reaches from its middle while the pointer is over it, as
+// the DAG's stylesheet grows it to 1.5 times its size.
+const GROWN = (HANDLE * 1.5) / 2;
+
+// How far from the mark's upper right corner the middle of a handle stays,
+// along the top and along the right side, so that no handle touches the
+// status dot, even while the pointer is over it.
+const DOT_ROOM = DOT_REACH + GROWN;
 
 // The id of the placeholder handle of a variadic block's next place.
 export const NEXT = "next";
@@ -366,7 +377,7 @@ function blockHandles({ board, id, entry, width, layout, links, byId, locked }: 
     top: { x: width / 2, y: 0, along: "x", most: markLeft + MARK - DOT_ROOM },
     bottom: { x: width / 2, y: BLOCK_HEIGHT, along: "x" },
     left: { x: markLeft, y: MARK / 2, along: "y" },
-    right: { x: markLeft + MARK, y: MARK / 2, along: "y" },
+    right: { x: markLeft + MARK, y: MARK / 2, along: "y", least: DOT_ROOM },
   };
   return spread(wanted, lines, MARK);
 }
@@ -396,19 +407,21 @@ function stackHandles(box: Box, links: readonly DrawnLink[], node: string): Hand
 const SIDES: readonly Side[] = ["top", "right", "bottom", "left"];
 
 // The line along which the handles of one side spread: its middle, the axis
-// along which it runs, and the furthest along it that the middle of a handle
-// sits, where something else sits beyond.
+// along which it runs, and the least and the most that the middle of a handle
+// sits at along it, where something else sits beyond, as the status dot does
+// beyond the right end of the mark's top and the top end of its right side.
 interface Line {
   readonly x: number;
   readonly y: number;
   readonly along: "x" | "y";
+  readonly least?: number;
   readonly most?: number;
 }
 
 // The handles, each placed on its side's line: the handles of one side spread
 // around the line's middle, in the order given, at least HANDLE_STEP apart,
-// and further where the span allows, and move back together where the last
-// would pass the line's `most`.
+// and further where the span allows, and move together where the first would
+// sit before the line's `least` or the last past its `most`.
 function spread(wanted: readonly Omit<HandleSpec, "x" | "y">[], lines: Readonly<Record<Side, Line>>, span: number): HandleSpec[] {
   const placed: HandleSpec[] = [];
   for (const side of SIDES) {
@@ -416,10 +429,12 @@ function spread(wanted: readonly Omit<HandleSpec, "x" | "y">[], lines: Readonly<
     const step = Math.max(span / (handles.length + 1), HANDLE_STEP);
     const line = lines[side];
     const middle = line.along === "x" ? line.x : line.y;
+    const first = middle - ((handles.length - 1) / 2) * step;
     const last = middle + ((handles.length - 1) / 2) * step;
+    const on = line.least === undefined ? 0 : Math.max(0, line.least - first);
     const back = line.most === undefined ? 0 : Math.max(0, last - line.most);
     for (const [i, handle] of handles.entries()) {
-      const offset = (i - (handles.length - 1) / 2) * step - back;
+      const offset = (i - (handles.length - 1) / 2) * step + on - back;
       const x = line.along === "x" ? line.x + offset : line.x;
       const y = line.along === "y" ? line.y + offset : line.y;
       placed.push({ ...handle, x: x - HANDLE / 2, y: y - HANDLE / 2 });

@@ -1432,7 +1432,9 @@ function idOf(object2) {
 // srcts/ui/elements.ts
 var HANDLE = 8;
 var HANDLE_STEP = 12;
-var DOT_ROOM = 10;
+var DOT_REACH = 8;
+var GROWN = HANDLE * 1.5 / 2;
+var DOT_ROOM = DOT_REACH + GROWN;
 var NEXT = "next";
 var DOTS = "...";
 function elementsOf(drawing) {
@@ -1595,7 +1597,7 @@ function blockHandles({ board, id, entry, width, layout, links, byId, locked }) 
     top: { x: width / 2, y: 0, along: "x", most: markLeft + MARK - DOT_ROOM },
     bottom: { x: width / 2, y: BLOCK_HEIGHT, along: "x" },
     left: { x: markLeft, y: MARK / 2, along: "y" },
-    right: { x: markLeft + MARK, y: MARK / 2, along: "y" }
+    right: { x: markLeft + MARK, y: MARK / 2, along: "y", least: DOT_ROOM }
   };
   return spread(wanted, lines, MARK);
 }
@@ -1625,10 +1627,12 @@ function spread(wanted, lines, span) {
     const step = Math.max(span / (handles.length + 1), HANDLE_STEP);
     const line = lines[side];
     const middle = line.along === "x" ? line.x : line.y;
+    const first = middle - (handles.length - 1) / 2 * step;
     const last = middle + (handles.length - 1) / 2 * step;
+    const on = line.least === void 0 ? 0 : Math.max(0, line.least - first);
     const back = line.most === void 0 ? 0 : Math.max(0, last - line.most);
     for (const [i, handle] of handles.entries()) {
-      const offset = (i - (handles.length - 1) / 2) * step - back;
+      const offset = (i - (handles.length - 1) / 2) * step + on - back;
       const x = line.along === "x" ? line.x + offset : line.x;
       const y = line.along === "y" ? line.y + offset : line.y;
       placed.push({ ...handle, x: x - HANDLE / 2, y: y - HANDLE / 2 });
