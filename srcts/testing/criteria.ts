@@ -51,13 +51,13 @@ export function swapped(before: Canvas, after: Canvas, gap: number): [string, st
 }
 
 // The nodes that lie in the box of an expanded stack that they are not in,
-// each as its key and the stack's id.
-export function intruders(canvas: Canvas): [string, string][] {
+// or closer to it than the gap, each as its key and the stack's id.
+export function intruders(canvas: Canvas, gap = 0): [string, string][] {
   const nodes = canvasNodes(canvas);
   return Object.keys(canvas.board.stacks).flatMap((stack) => {
     const box = canvas.collapsed.has(stack) ? undefined : expandedBox(canvas, stack);
     if (box === undefined) return [];
-    return nodes.filter((node) => node.stack !== stack && overlaps(node.box, box)).map((node): [string, string] => [key(node), stack]);
+    return nodes.filter((node) => node.stack !== stack && overlaps(node.box, box, gap)).map((node): [string, string] => [key(node), stack]);
   });
 }
 

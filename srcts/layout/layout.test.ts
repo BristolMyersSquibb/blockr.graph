@@ -1,9 +1,10 @@
 // Laying the whole board out with dagre: every block and every stack that
 // holds no block gets a position, the same board gets the same positions, and
-// the boxes that the DAG draws around the stacks' blocks hold no other node.
+// the boxes that the DAG draws around the stacks' blocks keep one gap from
+// every other node and box.
 
 import { beforeAll, describe, expect, test } from "vitest";
-import { canvasNodes, canvasOf, changed, expandedBox, overlaps } from "../geometry/index.ts";
+import { canvasNodes, canvasOf, changed, expandedBox, gapOf, overlaps } from "../geometry/index.ts";
 import type { Layout } from "../state/index.ts";
 import { boardOf, furthest, intruders, layeredBoard, SHAPES, stackSpecs, stateOf, withStacks, withState } from "../testing/index.ts";
 import { layOut, loadDagre } from "./index.ts";
@@ -19,8 +20,9 @@ test("loads dagre once", async () => {
 });
 
 describe.each(["compact", "normal", "loose"] as const)("a layout with the spacing %s", (spacing) => {
-  test.each(["TB", "LR"] as const)("leaves each stack's box clear of other nodes, laid out %s", (direction) => {
+  test.each(["TB", "LR"] as const)("keeps each stack's box one gap from other nodes and boxes, laid out %s", (direction) => {
     const settings = { direction, spacing };
+    const gap = gapOf(spacing);
     const plain = layeredBoard({ ...SHAPES.square, seed: 11 });
     const first = layOut(dagre, canvasOf(plain, stateOf(plain)), settings);
     const board = withStacks(plain, stackSpecs(Object.keys(plain.blocks).length), first.positions);
@@ -28,9 +30,9 @@ describe.each(["compact", "normal", "loose"] as const)("a layout with the spacin
     const laid = changed(canvas, layOut(dagre, canvas, settings));
 
     expect(Object.keys(laid.positions).sort()).toEqual(Object.keys(board.blocks).sort());
-    expect(intruders(laid)).toEqual([]);
+    expect(intruders(laid, gap)).toEqual([]);
     const boxes = Object.keys(board.stacks).flatMap((stack) => expandedBox(laid, stack) ?? []);
-    for (const [i, a] of boxes.entries()) for (const b of boxes.slice(i + 1)) expect(overlaps(a, b)).toBe(false);
+    for (const [i, a] of boxes.entries()) for (const b of boxes.slice(i + 1)) expect(overlaps(a, b, gap)).toBe(false);
     const nodes = canvasNodes(laid);
     for (const [i, a] of nodes.entries()) for (const b of nodes.slice(i + 1)) expect(overlaps(a.box, b.box)).toBe(false);
   });
