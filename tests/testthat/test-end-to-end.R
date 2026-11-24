@@ -157,6 +157,73 @@ test_that("a link dropped on an input that is fed says why it adds none", {
   expect_lte(abs(refusal[["y"]] - (to[["y"]] + 8)), 2)
 })
 
+test_that("a link dropped on the canvas appends a block at the drop", {
+
+  app <- local_example_app("stacks")
+  wait_for_dag(app)
+
+  # A spot at the canvas's lower left, which no node covers.
+  dag <- box_of(app, "document.querySelector('.blockr-graph')")
+  to <- c(x = dag[["x"]] + 60, y = dag[["y"]] + dag[["height"]] - 40)
+  expect_identical(
+    app$get_js(
+      paste0(
+        "document.elementFromPoint(", to[["x"]], ", ", to[["y"]], ")",
+        ".closest('.react-flow__node') === null"
+      )
+    ),
+    TRUE
+  )
+  drop <- canvas_point(app, to)
+
+  before <- app_blocks(app)
+  drag_mouse(app, center_of(app, handle_js("iris", "out-bottom")), to)
+
+  # Append block's quick action opens at the drop, with the block classes.
+  app$wait_for_js("document.querySelector('[role=menu]') !== null")
+  click_row(app, "head/tail block")
+
+  wait_until(
+    function() length(app_blocks(app)) == length(before) + 1L,
+    function() "the board to gain the appended block"
+  )
+
+  added <- setdiff(app_blocks(app), before)
+  links <- app_links(app)
+  expect_identical(links[links$to == added, "from"], "iris")
+  expect_lte(max(abs(app_position(app, added) - drop)), 1)
+})
+
+test_that("Ctrl with C and V pastes the selected block at the view's middle", {
+
+  app <- local_example_app("stacks")
+  wait_for_dag(app)
+
+  click_at(app, center_of(app, mark_js("bod")))
+  press_key(app, "c", "KeyC", 67L, CTRL)
+
+  dag <- box_of(app, "document.querySelector('.blockr-graph')")
+  middle <- canvas_point(
+    app,
+    c(
+      x = dag[["x"]] + dag[["width"]] / 2,
+      y = dag[["y"]] + dag[["height"]] / 2
+    )
+  )
+
+  before <- app_blocks(app)
+  press_key(app, "v", "KeyV", 86L, CTRL)
+
+  wait_until(
+    function() length(app_blocks(app)) == length(before) + 1L,
+    function() "the board to gain the pasted block"
+  )
+
+  added <- setdiff(app_blocks(app), before)
+  expect_identical(app_board(app)[["blocks"]][[added]][["name"]], "Dataset")
+  expect_lte(max(abs(app_position(app, added) - middle)), 1)
+})
+
 test_that("the arrow keys move the selected block, in one step", {
 
   app <- local_example_app("stacks")
