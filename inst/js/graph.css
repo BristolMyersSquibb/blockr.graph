@@ -10,6 +10,8 @@
   --blockr-graph-raised: var(--bc-color-bg-raised, Canvas);
   --blockr-graph-link: color-mix(in oklab, currentColor 40%, transparent);
   position: relative;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
@@ -18,6 +20,11 @@
   color: var(--blockr-graph-text);
   background: var(--blockr-graph-surface);
   font-family: var(--bc-font-sans, system-ui, sans-serif);
+}
+.blockr-graph-stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
 }
 .blockr-graph[data-height=own] {
   height: 50vh;
@@ -39,10 +46,10 @@
   --xy-selection-border: 1px dashed var(--blockr-graph-accent);
   --xy-attribution-background-color: transparent;
 }
-:root[data-bc-theme=dark] .blockr-graph .react-flow {
+:root[data-bc-theme=dark] .blockr-graph {
   color-scheme: dark;
 }
-:root[data-bc-theme=light] .blockr-graph .react-flow {
+:root[data-bc-theme=light] .blockr-graph {
   color-scheme: light;
 }
 .blockr-graph .react-flow__node:focus,
@@ -314,6 +321,9 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+[data-trigger=MenuTrigger]:has(.blockr-graph-add-menu) {
+  margin: -4px 0 0 8px;
+}
 .blockr-graph-search {
   display: grid;
   align-content: start;
@@ -340,6 +350,56 @@
   margin: 0;
   color: var(--blockr-graph-muted);
   font-size: 13px;
+}
+.blockr-graph .blockr-graph-separator {
+  width: 20px;
+  margin: 3px auto;
+}
+.blockr-graph-action-icon {
+  display: inline-flex;
+}
+.blockr-graph-action-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.blockr-graph-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-height: 50%;
+  overflow: hidden;
+  border-top: 1px solid var(--blockr-graph-border);
+  background: var(--blockr-graph-raised);
+  outline: none;
+}
+.blockr-graph-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 6px 12px;
+  border-bottom: 1px solid var(--blockr-graph-border);
+}
+.blockr-graph-panel-title {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.blockr-graph .blockr-graph-panel-control {
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+.blockr-graph-panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+.blockr-graph-panel-body > * {
+  max-width: 640px;
 }
 .blockr-graph-empty {
   position: absolute;

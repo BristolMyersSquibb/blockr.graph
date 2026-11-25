@@ -20,12 +20,26 @@
 //   link, taking the command's notifications so that core raises none. A link
 //   dropped on a variadic block's place that a link holds adds nothing, and
 //   the DAG says that the place is taken.
+// - A link dropped on the canvas, away from every node and stack, triggers
+//   Append block from a block's result, or Prepend block on the input that
+//   the link came from, through their roles, append_block_role and
+//   prepend_block_role, so that a board action that the app picks for either
+//   plays it here too. The new block starts at the drop (./actions.ts).
 // - A double click on a stack's box collapses or expands the stack.
+// - A right click on a node, a link, a stack or the canvas opens that
+//   object's menu of board actions, at the pointer, or the selection's menu
+//   where the object is one of several that the user selected, and so does a
+//   right click on the box that React Flow draws around a selection
+//   (./actions.ts, ./selection.ts). Where core offers the target nothing, the
+//   right click opens no menu.
 // - The selection follows core.selection, and selecting one block alone shows
 //   it through core.show() (./selection.ts).
 // - The DAG fits the view to the board as it first mounts on a board, at most
 //   at 100%, once the board's blocks have positions, and keeps the zoom and
-//   the pan for the page (./view.ts).
+//   the pan for the page (./view.ts). It fits the view again once the user
+//   lays the board out again through Layout, which tells the canvas through
+//   ../actions, as the canvas cannot tell a step of blockr.graph-relayout from
+//   another step.
 // - React Flow's props are set as the notes of Drawing the DAG give them:
 //   selectNodesOnDrag off, so that a drag selects nothing; edgesFocusable off,
 //   so that the first Tab reaches a block rather than every link first;
@@ -34,10 +48,11 @@
 //   corner rather than its centre, and snaps drags and the arrow keys itself
 //   (./moves.ts).
 
-import type { BlockId, CommandCall, LinkId, Notification } from "@blockr/core";
+import type { BlockId, BoardObject, CommandCall, LinkId, Notification } from "@blockr/core";
 import { useBoard } from "@blockr/core/react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactElement } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactElement } from "react";
+import { onFit } from "../actions/index.ts";
 import { ReactFlow, useReactFlow } from "../flow/index.ts";
 import type { EdgeChangeset, FinalConnectionState, NodeChangeset, NodeOrigin, Viewport } from "../flow/index.ts";
 import { canvasOf, changed, merged } from "../geometry/index.ts";
@@ -47,14 +62,14 @@ import type { Point } from "../state/index.ts";
 import { useGraph } from "./context.ts";
 import { elementsOf } from "./elements.ts";
 import type { Drawing, GraphEdge, GraphNode } from "./elements.ts";
-import { blockNode } from "./ids.ts";
+import { blockNode, objectOf } from "./ids.ts";
 import { LinkView } from "./link.tsx";
-import { linkDrop } from "./links.ts";
+import { canvasDrop, linkDrop } from "./links.ts";
 import { centreOf, dragMoves, joins, keyMoves, movesBatch, NO_MOVES } from "./moves.ts";
 import { BlockNodeView, StackNodeView } from "./nodes.tsx";
-import { sameSelection, selectedIds, selectionAfter, shownBlock } from "./selection.ts";
+import { menuTarget, sameSelection, selectedIds, selectionAfter, shownBlock } from "./selection.ts";
 import type { SelectChange } from "./selection.ts";
-import { fittedView, MAX_ZOOM, MIN_ZOOM, savedView, saveView } from "./view.ts";
+import { DURATION, fittedView, MAX_ZOOM, MIN_ZOOM, savedView, saveView } from "./view.ts";
 
 const NODE_TYPES = { block: BlockNodeView, stack: StackNodeView };
 const EDGE_TYPES = { link: LinkView };
@@ -94,7 +109,7 @@ export interface CanvasProps {
 }
 
 export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): ReactElement {
-  const { core, plugin } = useGraph();
+  const { core, plugin, actions } = useGraph();
   const board = useBoard(core);
   const selection = useSyncExternalStore(
     useCallback((notify: () => void) => core.selection.subscribe(notify), [core]),
@@ -155,6 +170,9 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
   // Runs the moves of the arrow keys that the DAG has not run yet, unless a
   // drag goes on, whose step takes them along.
   const drag = useRef<DragStart | null>(null);
+  // React Flow's root, within which a link dropped off every node lands on
+  // the canvas.
+  const root = useRef<HTMLDivElement>(null);
   const runKeys = useCallback(() => {
     clearTimeout(keyTimer.current);
     if (drag.current !== null || movesRef.current === NO_MOVES) return;
@@ -278,10 +296,17 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
   );
 
   const onConnectEnd = useCallback(
-    (_event: MouseEvent | TouchEvent, connection: FinalConnectionState) => {
+    (event: MouseEvent | TouchEvent, connection: FinalConnectionState) => {
       if (connection.fromNode === null) return;
       const { fromNode, fromHandle, toNode, toHandle, pointer, isValid } = connection;
-      if (toNode === null || toHandle === null || isValid !== true) return;
+      if (toNode === null) {
+        const dropped = canvasDrop(event, drawn.current.nodes, fromNode.id, fromHandle, root.current);
+        if (dropped !== undefined) {
+          void actions.trigger(dropped.role, dropped.target, { drop: { client: dropped.client, canvas: connection.to } });
+        }
+        return;
+      }
+      if (toHandle === null || isValid !== true) return;
       const dropped =
         fromHandle.type === "source"
           ? { source: fromNode.id, target: toNode.id, targetHandle: toHandle.id ?? "" }
@@ -303,7 +328,7 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
         })
         .catch(() => undefined);
     },
-    [core, onRefusal],
+    [actions, core, onRefusal],
   );
 
   // The first fit, as the DAG first mounts on the board: at once where the
@@ -327,8 +352,31 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
     }
   }, [base, flow, hasBlocks, nodes.length, size]);
 
+  // The fit once the user lays the board out again through Layout, to the
+  // board as the store holds it then.
+  useEffect(
+    () =>
+      onFit(() => {
+        const fit = fittedView(current(), size);
+        if (fit !== undefined) void flow.setViewport(fit, { duration: DURATION });
+      }),
+    [current, flow, size],
+  );
+
+  // Opens the menu of the board object that the user right-clicked, or of the
+  // selection that it is one of.
+  const menuOf = useCallback(
+    (event: ReactMouseEvent, object: BoardObject | undefined) => {
+      event.preventDefault();
+      if (object === undefined) return;
+      actions.menu(menuTarget(object, core.selection.get()), { x: event.clientX, y: event.clientY });
+    },
+    [actions, core],
+  );
+
   return (
     <ReactFlow<GraphNode, GraphEdge>
+      ref={root}
       nodes={nodes}
       edges={edges}
       nodeTypes={NODE_TYPES}
@@ -359,6 +407,21 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
       }}
       onPaneClick={() => {
         if (core.selection.get().length > 0) core.selection.set([]);
+      }}
+      onNodeContextMenu={(event, node) => {
+        menuOf(event, node.data.kind === "block" ? { block: node.data.block } : { stack: node.data.stack });
+      }}
+      onEdgeContextMenu={(event, edge) => {
+        menuOf(event, objectOf(edge.id));
+      }}
+      onPaneContextMenu={(event) => {
+        event.preventDefault();
+        actions.menu({ board: true }, { x: event.clientX, y: event.clientY });
+      }}
+      onSelectionContextMenu={(event) => {
+        event.preventDefault();
+        const selection = core.selection.get();
+        if (selection.length > 0) actions.menu({ selection }, { x: event.clientX, y: event.clientY });
       }}
       onSelectionStart={() => {
         rectangle.current = "drawing";

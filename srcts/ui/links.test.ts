@@ -2,15 +2,17 @@
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#gestures).
 
 import type { BlockRegistry, Board, RegistryEntry } from "@blockr/core";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { canvasOf } from "../geometry/index.ts";
 import { defaultState, GRAPH } from "../state/index.ts";
 import type { GraphState } from "../state/index.ts";
 import { elementsOf, NEXT } from "./elements.ts";
-import { linkDrop } from "./links.ts";
+import type { HandleSpec } from "./elements.ts";
+import { canvasDrop, linkDrop } from "./links.ts";
+import { handleTarget } from "./nodes.tsx";
 
 function entry(id: string, inputs: readonly string[]): RegistryEntry {
-  return { id, name: id, description: "", keywords: [], category: "", icon: "", inputs, module: "", version: 1, schema: {}, state: {}, requests: {} };
+  return { id, name: id, description: "", keywords: [], category: "", icon: "", inputs, module: "", version: 1, schema: {}, block_name: id, state: {}, requests: {} };
 }
 
 const REGISTRY: BlockRegistry = {
@@ -67,5 +69,67 @@ describe("a link dropped on a handle", () => {
     expect(linkDrop(nodes, { source: "s:s1", target: "b:m", targetHandle: "in:y" })).toBeUndefined();
     expect(linkDrop(nodes, { source: "b:b", target: "b:m", targetHandle: "in:z" })).toBeUndefined();
     expect(linkDrop(nodes, { source: "b:b", target: "b:gone", targetHandle: "in:y" })).toBeUndefined();
+  });
+});
+
+describe("a link dropped on the canvas", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const at = new MouseEvent("mouseup", { clientX: 30, clientY: 40 });
+
+  // React Flow's root, and its pane, which lies at the drop, as happy-dom lays
+  // nothing out.
+  const canvas = document.createElement("div");
+  const pane = canvas.appendChild(document.createElement("div"));
+  beforeEach(() => {
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(pane);
+  });
+
+  test("from a block's result appends a block, through its role", () => {
+    expect(canvasDrop(at, nodes, "b:a", { id: "out", type: "source" }, canvas)).toEqual({
+      role: "append_block_role",
+      target: { block: "a" },
+      client: { x: 30, y: 40 },
+    });
+  });
+
+  test("from an input prepends a block on it, or on a variadic block's next place", () => {
+    expect(canvasDrop(at, nodes, "b:m", { id: "in:y", type: "target" }, canvas)).toMatchObject({ role: "prepend_block_role", target: { block: "m", input: "y" } });
+    expect(canvasDrop(at, nodes, "b:e", { id: NEXT, type: "target" }, canvas)).toMatchObject({ role: "prepend_block_role", target: { block: "e", input: "" } });
+  });
+
+  test("adds nothing from a variadic block's place that a link holds, nor on a node", () => {
+    expect(canvasDrop(at, nodes, "b:e", { id: "in:#ae", type: "target" }, canvas)).toBeUndefined();
+    const node = canvas.appendChild(document.createElement("div"));
+    node.className = "react-flow__node";
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(node);
+    expect(canvasDrop(at, nodes, "b:a", { id: "out", type: "source" }, canvas)).toBeUndefined();
+  });
+
+  test("adds nothing off the canvas, as on another panel of the dock", () => {
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(document.createElement("div"));
+    expect(canvasDrop(at, nodes, "b:a", { id: "out", type: "source" }, canvas)).toBeUndefined();
+  });
+});
+
+describe("a right click on a handle", () => {
+  // The handle of the block's node that passes the check.
+  const handle = (block: string, check: (spec: HandleSpec) => boolean): HandleSpec => {
+    const node = nodes.find((each) => each.id === `b:${block}`);
+    const found = node?.data.kind === "block" ? node.data.handles.find(check) : undefined;
+    if (found === undefined) throw new Error(`No such handle of block ${block}`);
+    return found;
+  };
+
+  test("opens the menu of the link that feeds its input, or of the input where none does", () => {
+    expect(handleTarget("m", handle("m", (each) => each.id === "in:x#am"))).toEqual({ link: "am" });
+    expect(handleTarget("m", handle("m", (each) => each.id === "in:y"))).toEqual({ block: "m", input: "y" });
+    expect(handleTarget("e", handle("e", (each) => each.id === NEXT))).toEqual({ block: "e", input: "" });
+  });
+
+  test("on a block's result opens the block's menu, as the node does", () => {
+    expect(handleTarget("a", handle("a", (each) => each.type === "source"))).toBeUndefined();
   });
 });

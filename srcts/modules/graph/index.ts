@@ -13,16 +13,23 @@
 //   and its `start`, which gives every block and stack a position as a board
 //   opens (../../plugin).
 // - Its five commands (../../commands), which core registers with the class.
-// - Its `ui`, which draws the board with React Flow (../../ui).
+// - Its four board actions, Copy, Cut, Paste and Layout (../../actions), which
+//   core registers with the class, and which every menu of their objects
+//   offers beside core's.
+// - Its `ui`, which draws the board with React Flow, and opens core's menus
+//   of board actions (../../ui).
 //
-// Each but the `ui` gives the same positions for the same board wherever it
-// runs, since none reads anything on the page.
+// Its `update`, `afterStep`, `start` and commands give the same positions for
+// the same board wherever they run, since none reads anything on the page.
+// The board actions and the `ui` read the page, as the clipboard and where
+// the user right-clicked.
 
 import type { PluginClass } from "@blockr/core";
 // The schema of the class's state is the file that the build writes for R,
 // beside the bundle.
 // eslint-disable-next-line no-restricted-imports
 import schema from "../../../inst/js/graph.schema.json" with { type: "json" };
+import { graphBoardActions } from "../../actions/index.ts";
 import { graphCommands } from "../../commands/index.ts";
 import { afterStep, start, update } from "../../plugin/index.ts";
 import { defaultState } from "../../state/index.ts";
@@ -36,5 +43,6 @@ export default {
   afterStep,
   start,
   commands: graphCommands,
+  boardActions: graphBoardActions,
   ui,
 } satisfies Omit<PluginClass, "id">;

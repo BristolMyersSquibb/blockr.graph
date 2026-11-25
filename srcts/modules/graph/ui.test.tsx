@@ -75,9 +75,10 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-// The DAG's UI mounted in an element of the page, as a frontend places it.
-async function mounted(hello: HelloReply = helloWith({ positions: POSITIONS })): Promise<Mounted> {
-  const stub = await act(() => stubCore({ hello, modules: { [GRAPH]: graph } }));
+// The DAG's UI mounted in an element of the page, as a frontend places it, in
+// an app whose other modules are those given beside core's.
+async function mounted(hello: HelloReply = helloWith({ positions: POSITIONS }), modules: Readonly<Record<string, unknown>> = {}): Promise<Mounted> {
+  const stub = await act(() => stubCore({ hello, modules: { [GRAPH]: graph, ...modules } }));
   stops.push(stub.stop);
   const el = document.createElement("div");
   document.body.append(el);
@@ -216,6 +217,15 @@ describe("the selection", () => {
     await click(nodeOf(el, "s:s1"));
     expect(core.selection.get()).toEqual([{ stack: "s1" }]);
     expect(show).not.toHaveBeenCalled();
+  });
+
+  test("selects no text on the page while a drag that starts on it goes on", async () => {
+    const { el } = await mounted();
+    const selecting = () => !document.dispatchEvent(new Event("selectstart", { cancelable: true }));
+    pane(el).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(selecting()).toBe(true);
+    document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    expect(selecting()).toBe(false);
   });
 
   test("is cleared by a click on the canvas", async () => {
@@ -404,5 +414,475 @@ describe("search and the outline", () => {
       await Promise.resolve();
     });
     expect(el.querySelector(".blockr-graph-search")).toBeNull();
+  });
+});
+
+// A plugin class of the tests, which lists two board actions beside core's and
+// the DAG's: Break, on the board, whose batch the store refuses, since it
+// removes a block that the board does not hold, and Probe, on a link, a block
+// or the board, whose advanced action shows its target as text, with a button
+// that renames block f through its done().
+const TESTER = "blockr.test-tester_plugin";
+const tester = {
+  api: 1,
+  default: {
+    boardActions: [
+      {
+        id: "blockr.test-break_action",
+        label: "Break",
+        on: ["board"],
+        category: "edit",
+        run: () => [{ id: "blockr.core-remove_block", args: { id: "zz" } }],
+      },
+      {
+        id: "blockr.test-probe_action",
+        label: "Probe",
+        on: ["link", "block", "board"],
+        category: "edit",
+        advanced: {
+          render({ el, target, done }: { el: HTMLElement; target: unknown; done: (calls?: unknown[]) => Promise<void> }) {
+            const shown = document.createElement("p");
+            shown.textContent = JSON.stringify(target);
+            const apply = document.createElement("button");
+            apply.textContent = "Apply";
+            apply.addEventListener("click", () => {
+              void done([{ id: "blockr.core-change_block", args: { id: "f", name: "Renamed" } }]);
+            });
+            el.append(shown, apply);
+            return () => {
+              el.replaceChildren();
+            };
+          },
+        },
+      },
+    ],
+  },
+};
+
+// The DAG's UI on the fixture's board, in an app that runs the plugin class of
+// the tests as well.
+function mountedWithTester(): Promise<Mounted> {
+  const hello = helloWith({ positions: POSITIONS });
+  const plugins = { ...hello.plugins, [TESTER]: { name: "Tester", version: 1, options: [], module: "blockr.test/js/tester.js" } };
+  return mounted({ ...hello, plugins }, { [TESTER]: tester });
+}
+
+async function rightClick(target: Element, at = { x: 50, y: 60 }): Promise<void> {
+  await act(async () => {
+    target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: at.x, clientY: at.y }));
+    await Promise.resolve();
+  });
+}
+
+async function keyDown(target: Element, init: KeyboardEventInit): Promise<void> {
+  await act(async () => {
+    target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+    await Promise.resolve();
+  });
+}
+
+// The labels of the rows that the menu that is open shows.
+function rowLabels(stub: StubCore): string[] {
+  return stub.menu()?.level()?.rows.map((row) => row.label) ?? [];
+}
+
+function pane(el: HTMLElement): Element {
+  const found = el.querySelector(".react-flow__pane");
+  if (found === null) throw new Error("No pane");
+  return found;
+}
+
+function frameOf(el: HTMLElement): HTMLElement {
+  const found = el.querySelector<HTMLElement>(".blockr-graph");
+  if (found === null) throw new Error("No DAG element");
+  return found;
+}
+
+function names(core: CoreApi): string[] {
+  return Object.values(core.store.board().blocks).map((block) => block.name);
+}
+
+describe("a right click", () => {
+  test("on a node opens its block's menu, with core's board actions and the DAG's", async () => {
+    const { el, stub } = await mounted();
+    await rightClick(nodeOf(el, "b:c"));
+    expect(rowLabels(stub)).toEqual(expect.arrayContaining(["Append block", "Edit inputs", "Copy", "Cut", "Remove block"]));
+  });
+
+  test("on a node of a selection of several opens the selection's menu", async () => {
+    const { el, core, stub } = await mounted();
+    act(() => {
+      core.selection.set([{ block: "c" }, { block: "d" }]);
+    });
+    await rightClick(nodeOf(el, "b:c"));
+    expect(rowLabels(stub)).toEqual(expect.arrayContaining(["Create stack", "Copy", "Cut", "Remove"]));
+    expect(rowLabels(stub)).not.toContain("Remove block");
+  });
+
+  test("on a link or a stack opens its menu", async () => {
+    const { el, stub } = await mounted();
+    const edge = el.querySelector('.react-flow__edge[data-id="l:ab"]');
+    if (edge === null) throw new Error("No edge");
+    await rightClick(edge);
+    expect(rowLabels(stub)).toEqual(expect.arrayContaining(["Insert block", "Edit link", "Remove link"]));
+    await rightClick(nodeOf(el, "s:s1"));
+    expect(rowLabels(stub)).toEqual(expect.arrayContaining(["Edit stack", "Copy", "Remove stack"]));
+  });
+
+  test("on an input's handle opens the menu of the link that feeds it, or of the input", async () => {
+    const { el, stub } = await mounted();
+    const fed = nodeOf(el, "b:c").querySelector('.react-flow__handle[data-handleid="in:y#bc"]');
+    const next = nodeOf(el, "b:e").querySelector('.react-flow__handle[data-handleid="next"]');
+    if (fed === null || next === null) throw new Error("No handle");
+    await rightClick(fed);
+    expect(rowLabels(stub)).toEqual(expect.arrayContaining(["Edit link", "Remove link"]));
+    await rightClick(next);
+    expect(rowLabels(stub)).toEqual(["Prepend block", "Create link"]);
+  });
+
+  test("on the canvas opens the board's menu, whose additions start where the user right-clicked", async () => {
+    const { el, core, stub } = await mounted();
+    await rightClick(pane(el), { x: 700, y: 650 });
+    expect(rowLabels(stub)).toEqual(expect.arrayContaining(["Add block", "Create stack", "Paste", "Layout"]));
+    const menu = stub.menu();
+    await act(async () => {
+      await menu?.pick("Create stack");
+      await menu?.pick("Name");
+    });
+    const [added] = Object.keys(core.store.board().stacks).filter((id) => id !== "s1");
+    // The point on the canvas under the right click, through the view's pan
+    // and zoom, which the DAG keeps for the page from an earlier test.
+    const [x = 0, y = 0, zoom = 1] = (el.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform.match(/-?[\d.]+/g) ?? []).map(Number);
+    expect((core.store.board().plugins[GRAPH] as GraphState).stacks[added ?? ""]).toEqual({ x: (700 - x) / zoom, y: (650 - y) / zoom });
+  });
+
+  test("on the canvas of a locked board offers only what the lock leaves", async () => {
+    const { el, stub } = await mounted(helloWith({ positions: POSITIONS }, { ...HELLO.lock, board: true }));
+    await rightClick(pane(el));
+    expect(rowLabels(stub)).toEqual(["Layout"]);
+  });
+
+  test("shows why the store refused the batch where the user opened the menu", async () => {
+    const { el, stub } = await mountedWithTester();
+    await rightClick(pane(el), { x: 300, y: 200 });
+    await act(async () => {
+      await stub.menu()?.pick("Break").catch(() => undefined);
+    });
+    const refusal = el.querySelector<HTMLElement>(".blockr-graph-refusal");
+    expect(refusal?.textContent).toContain('"zz"');
+    expect([refusal?.style.left, refusal?.style.top]).toEqual(["300px", "200px"]);
+  });
+
+  test("tells the user that the clipboard holds no board objects to paste through a notification about the board, which a frontend shows as a toast", async () => {
+    const { el, core, stub } = await mounted();
+    await navigator.clipboard.writeText("");
+    await rightClick(pane(el), { x: 300, y: 200 });
+    await act(async () => {
+      await stub.menu()?.pick("Paste");
+    });
+    await vi.waitFor(() => {
+      expect(core.notifications.get().map(({ severity, message, about }) => ({ severity, message, about }))).toContainEqual({
+        severity: "message",
+        message: "The clipboard holds no board objects to paste.",
+        about: undefined,
+      });
+    });
+    expect(el.querySelector(".blockr-graph-refusal")).toBeNull();
+    expect(core.store.canUndo()).toBe(false);
+  });
+});
+
+describe("the toolbar", () => {
+  function hasButton(el: HTMLElement, label: string): boolean {
+    return el.querySelector(`button[aria-label="${label}"]`) !== null;
+  }
+
+  test("offers its own list of board actions on the board, and on the selection while the user has selected something", async () => {
+    const { el, core } = await mountedWithTester();
+    for (const label of ["Add to the board", "Paste", "Layout"]) expect(hasButton(el, label)).toBe(true);
+    // The board actions of the list's + show in no button of their own, and
+    // the board actions of other packages in none at all.
+    for (const label of ["Add block", "Create link", "Probe", "Break", "Copy"]) expect(hasButton(el, label)).toBe(false);
+    act(() => {
+      core.selection.set([{ block: "f" }]);
+    });
+    for (const label of ["Add the selection to a stack", "Copy", "Cut", "Remove"]) expect(hasButton(el, label)).toBe(true);
+  });
+
+  test("offers only what the board lock leaves", async () => {
+    const { el, core } = await mounted(helloWith({ positions: POSITIONS }, { ...HELLO.lock, board: true }));
+    act(() => {
+      core.selection.set([{ block: "f" }]);
+    });
+    for (const label of ["Layout", "Copy"]) expect(hasButton(el, label)).toBe(true);
+    for (const label of ["Add to the board", "Paste", "Add the selection to a stack", "Cut", "Remove"]) expect(hasButton(el, label)).toBe(false);
+  });
+
+  test("pops out the board actions of its +, and triggers the one that the user picks", async () => {
+    const { el, core, stub } = await mounted();
+    await press(button(el, "Add to the board"));
+    const items = () => [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
+    expect(items().map((item) => item.textContent.trim())).toEqual(["Add block", "Create link", "Create stack"]);
+    const stack = items().find((item) => item.textContent.trim() === "Create stack");
+    if (stack === undefined) throw new Error("No item Create stack");
+    await click(stack);
+    // Create stack's quick action opens at the +, with the name of the stack.
+    await vi.waitFor(() => {
+      expect(stub.menu()?.level()?.rows.map((row) => row.label)).toEqual(["Name"]);
+    });
+    await act(async () => {
+      await stub.menu()?.pick("Name");
+    });
+    expect(Object.keys(core.store.board().stacks)).toHaveLength(2);
+  });
+
+  test("opens what a button opens to the right of the toolbar, level with the toolbar's edge above the button", async () => {
+    const { el, core } = await mounted();
+    // The toolbar is 36 px wide at 10, 10, and holds the button 4 px in from
+    // its edges, as happy-dom lays nothing out.
+    const rects = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.classList.contains("blockr-graph-toolbar")) return new DOMRect(10, 10, 36, 300);
+      if (this.getAttribute("aria-label") === "Layout") return new DOMRect(14, 200, 28, 28);
+      return new DOMRect(0, 0, 0, 0);
+    });
+    const trigger = vi.spyOn(core.boardActions, "trigger");
+    await press(button(el, "Layout"));
+    // Core's menu hangs 4 px below its anchor, so its top lies at 196, 4 px
+    // above the button's, as the toolbar's top lies 4 px above its first
+    // button's, and 8 px to the right of the toolbar.
+    const anchor = trigger.mock.calls[0]?.[2].anchor;
+    expect([anchor?.x, anchor?.y]).toEqual([54, 192]);
+    rects.mockRestore();
+    trigger.mockRestore();
+  });
+
+  test("opens a board action's quick action, and runs one that asks nothing", async () => {
+    const { el, core, stub } = await mounted();
+    await press(button(el, "Layout"));
+    expect(stub.menu()?.level()?.title).toBe("Layout");
+    act(() => {
+      core.selection.set([{ block: "f" }]);
+    });
+    await press(button(el, "Remove"));
+    await vi.waitFor(() => {
+      expect(names(core)).not.toContain("Scatter");
+    });
+  });
+});
+
+describe("the keys", () => {
+  test("remove the selection on Backspace, but not while the user types in a field", async () => {
+    const { el, core } = await mounted();
+    act(() => {
+      core.selection.set([{ block: "f" }]);
+    });
+    await press(button(el, "Search blocks"));
+    const field = el.querySelector(".blockr-graph-search input");
+    if (field === null) throw new Error("No search field");
+    await keyDown(field, { key: "Backspace" });
+    expect(names(core)).toContain("Scatter");
+    await keyDown(frameOf(el), { key: "Backspace" });
+    await vi.waitFor(() => {
+      expect(names(core)).not.toContain("Scatter");
+    });
+  });
+
+  test("copy the selection with Cmd or Ctrl and C, and paste it with V through the browser's paste, without reading the clipboard", async () => {
+    const { el, core } = await mounted();
+    act(() => {
+      core.selection.set([{ block: "f" }]);
+    });
+    await keyDown(frameOf(el), { key: "c", metaKey: true });
+    const copied = await navigator.clipboard.readText();
+    expect(Object.keys((JSON.parse(copied) as JsonBoard).board.blocks)).toEqual(["f"]);
+    // The DAG leaves V to the browser, whose paste hands the page the
+    // clipboard, so that the DAG reads none, for which the browser would ask
+    // the user.
+    const read = vi.spyOn(navigator.clipboard, "readText");
+    const v = new KeyboardEvent("keydown", { key: "v", ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      frameOf(el).dispatchEvent(v);
+    });
+    expect(v.defaultPrevented).toBe(false);
+    frameOf(el).focus();
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", copied);
+    await act(async () => {
+      document.body.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData }));
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(names(core).filter((name) => name === "Scatter")).toHaveLength(2);
+    });
+    expect(read).not.toHaveBeenCalled();
+    read.mockRestore();
+  });
+
+  test("give core no notifier, so that core raises the refusal of a key's batch, which a frontend shows as a toast", async () => {
+    const { el, core } = await mounted();
+    const trigger = vi.spyOn(core.boardActions, "trigger");
+    act(() => {
+      core.selection.set([{ block: "f" }]);
+    });
+    await keyDown(frameOf(el), { key: "Backspace" });
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(trigger.mock.calls[0]?.[2]).not.toHaveProperty("notifier");
+    trigger.mockRestore();
+  });
+});
+
+describe("the panel of advanced actions", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Gives the DAG's element 1200 by 800 pixels, the canvas above the panel
+  // 500, its toolbar a column at its top left, and every other element a box
+  // of 40 by 52 at 200, 470, as happy-dom lays nothing out.
+  function room(): void {
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.classList.contains("blockr-graph")) return new DOMRect(0, 0, 1200, 800);
+      if (this.classList.contains("blockr-graph-stage")) return new DOMRect(0, 0, 1200, 500);
+      if (this.classList.contains("blockr-graph-toolbar")) return new DOMRect(10, 10, 36, 300);
+      return new DOMRect(200, 470, 40, 52);
+    });
+  }
+
+  function panel(el: HTMLElement): HTMLElement | null {
+    return el.querySelector<HTMLElement>(".blockr-graph-panel");
+  }
+
+  // Where the canvas's view lies, by the transform of React Flow's viewport.
+  function viewport(el: HTMLElement): string {
+    return el.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform ?? "";
+  }
+
+  // Opens the tester's advanced action from the menu of the canvas.
+  async function probe(el: HTMLElement, stub: StubCore): Promise<void> {
+    await rightClick(pane(el));
+    // The pick resolves once the advanced action that it opens ends.
+    act(() => {
+      void stub.menu()?.pick("Probe");
+    });
+    await vi.waitFor(() => {
+      expect(panel(el)).not.toBeNull();
+    });
+  }
+
+  test("docks an advanced action below the canvas, and closes once it ends", async () => {
+    const { el, core, stub } = await mountedWithTester();
+    room();
+    await probe(el, stub);
+    expect(stub.advanced()).toBeUndefined();
+    expect(panel(el)?.getAttribute("aria-label")).toBe("Probe");
+    expect(panel(el)?.previousElementSibling?.classList.contains("blockr-graph-stage")).toBe(true);
+    expect(panel(el)?.querySelector("p")?.textContent).toBe('{"board":true}');
+    await click(panel(el)?.querySelector("button:not([aria-label])") ?? el);
+    await vi.waitFor(() => {
+      expect(panel(el)).toBeNull();
+    });
+    expect(names(core)).toContain("Renamed");
+  });
+
+  test("pans the canvas until the advanced action's object lies above the panel", async () => {
+    const { el, stub } = await mountedWithTester();
+    room();
+    const before = viewport(el);
+    const edge = el.querySelector('.react-flow__edge[data-id="l:ab"]');
+    if (edge === null) throw new Error("No edge");
+    await rightClick(edge);
+    act(() => {
+      void stub.menu()?.pick("Probe");
+    });
+    await vi.waitFor(() => {
+      expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"ab"}');
+    });
+    // The link's box reaches to 522 px, which the canvas of 500 px pans up
+    // until it ends 10 px above the panel.
+    const y = (transform: string) => Number(/translate\([^,]+,\s*(-?[\d.]+)px\)/.exec(transform)?.[1]);
+    await vi.waitFor(() => {
+      expect(y(viewport(el)) - y(before)).toBeCloseTo(-32);
+    });
+  });
+
+  test("takes the focus as it opens, and closes on Escape on the canvas, unless it is pinned", async () => {
+    const { el, stub } = await mountedWithTester();
+    room();
+    await probe(el, stub);
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(panel(el));
+    });
+    await keyDown(frameOf(el), { key: "Escape" });
+    expect(panel(el)).toBeNull();
+    expect(document.activeElement).toBe(frameOf(el));
+    await probe(el, stub);
+    await press(button(el, "Pin"));
+    await keyDown(frameOf(el), { key: "Escape" });
+    expect(panel(el)).not.toBeNull();
+  });
+
+  test("leaves the advanced action to the frontend's place where the canvas has no room for it", async () => {
+    const { el, stub } = await mountedWithTester();
+    await rightClick(pane(el));
+    act(() => {
+      void stub.menu()?.pick("Probe");
+    });
+    await vi.waitFor(() => {
+      expect(stub.advanced()).toBeDefined();
+    });
+    expect(panel(el)).toBeNull();
+  });
+
+  test("once pinned, mounts an advanced action drawn in React afresh on the block that the user selects", async () => {
+    const { el, core, stub } = await mounted();
+    room();
+    await rightClick(nodeOf(el, "b:c"));
+    act(() => {
+      void stub.menu()?.pick("Edit inputs");
+    });
+    await vi.waitFor(() => {
+      expect(panel(el)?.textContent).toContain('The inputs of the block "Merge".');
+    });
+    await press(button(el, "Pin"));
+    await act(async () => {
+      core.selection.set([{ block: "d" }]);
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(panel(el)?.textContent).toContain('The inputs of the block "Wide sepals".');
+    });
+    expect(panel(el)?.querySelectorAll(".blockr-graph-panel-body")).toHaveLength(1);
+  });
+
+  test("once pinned, follows the selection and stays open once its advanced action ends", async () => {
+    const { el, core, stub } = await mountedWithTester();
+    room();
+    const edge = el.querySelector('.react-flow__edge[data-id="l:ab"]');
+    if (edge === null) throw new Error("No edge");
+    await rightClick(edge);
+    act(() => {
+      void stub.menu()?.pick("Probe");
+    });
+    await vi.waitFor(() => {
+      expect(panel(el)).not.toBeNull();
+    });
+    await press(button(el, "Pin"));
+    act(() => {
+      core.selection.set([{ link: "bc" }]);
+    });
+    expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"bc"}');
+    // A selection of several, or of an object that the board action is not
+    // on, changes nothing.
+    act(() => {
+      core.selection.set([{ stack: "s1" }]);
+    });
+    expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"bc"}');
+    await click(panel(el)?.querySelector("button:not([aria-label])") ?? el);
+    await vi.waitFor(() => {
+      expect(names(core)).toContain("Renamed");
+    });
+    expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"bc"}');
+    await press(button(el, "Close"));
+    expect(panel(el)).toBeNull();
   });
 });

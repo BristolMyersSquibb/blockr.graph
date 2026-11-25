@@ -11,8 +11,14 @@
 // - Dropped on a variadic block's place that a link holds, it adds nothing,
 //   and the DAG says that the place is taken, as the preflight says of an
 //   input that a link feeds.
+// - Dropped on the canvas, away from every node and stack, it triggers Append
+//   block from a block's result, or Prepend block on the input that it came
+//   from, or on a variadic block's next place, through their roles. Dropped
+//   on a node or on a stack's box, away from its handles, it adds nothing, as
+//   today's does.
 
-import type { BlockId, Json } from "@blockr/core";
+import type { BlockId, Json, Target } from "@blockr/core";
+import type { Point } from "../state/index.ts";
 import type { GraphNode } from "./elements.ts";
 import { objectOf } from "./ids.ts";
 
@@ -42,4 +48,36 @@ export function linkDrop(nodes: readonly GraphNode[], { source, target, targetHa
 
 function takenPlace(link: string, place: string, block: BlockId): string {
   return `The link "${link}" feeds the place "${place}" of block "${block}" already.`;
+}
+
+// What a link that the user dropped on the canvas triggers: the role, its
+// target and the drop on the screen, or undefined where the link was dropped
+// on a node or off the canvas, as on another panel of the dock, came from no
+// block, or came from a variadic block's place that a link holds.
+export function canvasDrop(
+  event: MouseEvent | TouchEvent,
+  nodes: readonly GraphNode[],
+  from: string,
+  handle: { readonly id?: string | null; readonly type: "source" | "target" } | null,
+  canvas: Element | null,
+): { readonly role: string; readonly target: Target; readonly client: Point } | undefined {
+  const client = clientOf(event);
+  if (client === undefined || handle === null || canvas === null) return undefined;
+  const hit = document.elementFromPoint(client.x, client.y);
+  if (hit === null || !canvas.contains(hit) || hit.closest(".react-flow__node") !== null) return undefined;
+  const object = objectOf(from);
+  const node = nodes.find((each) => each.id === from);
+  if (object === undefined || !("block" in object) || node?.data.kind !== "block") return undefined;
+  if (handle.type === "source") return { role: "append_block_role", target: { block: object.block }, client };
+  const input = node.data.handles.find((each) => each.id === handle.id)?.input;
+  return input === undefined ? undefined : { role: "prepend_block_role", target: { block: object.block, input }, client };
+}
+
+// Where the pointer or the touch was as the event ended a drag, on the screen.
+function clientOf(event: MouseEvent | TouchEvent): Point | undefined {
+  if ("changedTouches" in event) {
+    const touch = event.changedTouches[0];
+    return touch === undefined ? undefined : { x: touch.clientX, y: touch.clientY };
+  }
+  return { x: event.clientX, y: event.clientY };
 }

@@ -13,11 +13,20 @@
  * - React Flow sets `color-scheme: light dark` on its root, so that it follows
  *   the system's mode. The DAG follows the mode that core's board option
  *   dark_mode switches the page to instead, which core writes on the page's
- *   root as data-bc-theme.
+ *   root as data-bc-theme. It sets that mode on its own element, whose
+ *   background the system colour Canvas paints, and React Flow's root, the
+ *   toolbar and the panel inherit it from there. The element that holds the
+ *   DAG can be of another mode: the dock's shell keeps the light mode of
+ *   dockview's theme while core's mode is dark.
  */
 
 @import "../../flow/vendor.css";
 
+/*
+ * The DAG's element is a column: the canvas with its toolbar on top, in the
+ * stage, and the panel of advanced actions below it while it shows one, which
+ * takes its height from the stage.
+ */
 .blockr-graph {
   --blockr-graph-surface: Canvas;
   --blockr-graph-text: var(--bc-color-text-default, CanvasText);
@@ -27,6 +36,8 @@
   --blockr-graph-raised: var(--bc-color-bg-raised, Canvas);
   --blockr-graph-link: color-mix(in oklab, currentColor 40%, transparent);
   position: relative;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
@@ -35,6 +46,12 @@
   color: var(--blockr-graph-text);
   background: var(--blockr-graph-surface);
   font-family: var(--bc-font-sans, system-ui, sans-serif);
+}
+
+.blockr-graph-stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 /*
@@ -63,11 +80,11 @@
   --xy-attribution-background-color: transparent;
 }
 
-:root[data-bc-theme="dark"] .blockr-graph .react-flow {
+:root[data-bc-theme="dark"] .blockr-graph {
   color-scheme: dark;
 }
 
-:root[data-bc-theme="light"] .blockr-graph .react-flow {
+:root[data-bc-theme="light"] .blockr-graph {
   color-scheme: light;
 }
 
@@ -394,6 +411,17 @@
   stroke-linejoin: round;
 }
 
+/*
+ * The menu of the toolbar's +, which React Aria opens level with the + and
+ * touching the toolbar, moved out to the gap that the panel of search keeps
+ * from the toolbar, and up to the toolbar's edge above the +, as the menus of
+ * the toolbar's other buttons open (../../ui/actions.ts). The menu lies in a
+ * popover at the end of the page, outside the DAG's element.
+ */
+[data-trigger="MenuTrigger"]:has(.blockr-graph-add-menu) {
+  margin: -4px 0 0 8px;
+}
+
 .blockr-graph-search {
   display: grid;
   align-content: start;
@@ -425,9 +453,81 @@
 }
 
 /*
+ * The toolbar's buttons of board actions, after a line below the DAG's own
+ * controls: each with the board action's icon, which core and the packages
+ * give as SVG markup, or with the DAG's own where it has none.
+ */
+.blockr-graph .blockr-graph-separator {
+  width: 20px;
+  margin: 3px auto;
+}
+
+.blockr-graph-action-icon {
+  display: inline-flex;
+}
+
+.blockr-graph-action-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/*
+ * The panel of advanced actions, docked below the canvas, as wide as the
+ * DAG's element, with its title, its pin and its close button above the
+ * advanced action, which scrolls within the panel. It takes at most half of
+ * the element's height, and the stage the rest (../../ui/panel-place.ts). The
+ * advanced action keeps the width of a form, however wide the element is.
+ */
+.blockr-graph-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-height: 50%;
+  overflow: hidden;
+  border-top: 1px solid var(--blockr-graph-border);
+  background: var(--blockr-graph-raised);
+  outline: none;
+}
+
+.blockr-graph-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 6px 12px;
+  border-bottom: 1px solid var(--blockr-graph-border);
+}
+
+.blockr-graph-panel-title {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.blockr-graph .blockr-graph-panel-control {
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.blockr-graph-panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.blockr-graph-panel-body > * {
+  max-width: 640px;
+}
+
+/*
  * The empty board's line, in the design system's style for an empty place,
- * and why the board took no link that the user dropped, where the user
- * dropped it.
+ * and why the board took no link that the user dropped, or no batch of a
+ * board action, where the user dropped the link, opened the menu or triggered
+ * the board action.
  */
 .blockr-graph-empty {
   position: absolute;

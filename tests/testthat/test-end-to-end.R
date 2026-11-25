@@ -29,6 +29,39 @@ test_that("the DAG draws the board in core's basic frontend", {
   expect_lte(app_zoom(app), 1)
 })
 
+test_that("the DAG takes core's dark mode in a container of the light mode", {
+
+  app <- local_example_app("stacks")
+  wait_for_dag(app)
+
+  # The dock's shell holds the DAG in the light mode of dockview's theme while
+  # core's mode is dark.
+  # The canvas then paints the dark mode's Canvas, and the toolbar is of the
+  # dark mode as well.
+  modes <- app$get_js(
+    "(() => {
+      document.documentElement.setAttribute('data-bc-theme', 'dark');
+      const graph = document.querySelector('.blockr-graph');
+      graph.parentElement.style.colorScheme = 'light';
+      const probe = document.createElement('div');
+      probe.style.cssText = 'color-scheme: dark; background: Canvas';
+      document.body.append(probe);
+      const dark = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      const toolbar = document.querySelector('.blockr-graph-toolbar');
+      return {
+        graph: getComputedStyle(graph).colorScheme,
+        toolbar: getComputedStyle(toolbar).colorScheme,
+        painted: getComputedStyle(graph).backgroundColor === dark
+      };
+    })()"
+  )
+
+  expect_identical(modes[["graph"]], "dark")
+  expect_identical(modes[["toolbar"]], "dark")
+  expect_true(modes[["painted"]])
+})
+
 test_that("the DAG keeps where a drag moves a block once the drag ends", {
 
   app <- local_example_app("stacks")
@@ -155,6 +188,170 @@ test_that("a link dropped on an input that is fed says why it adds none", {
   refusal <- box_of(app, "document.querySelector('.blockr-graph-refusal')")
   expect_lte(abs(refusal[["x"]] - (to[["x"]] + 8)), 2)
   expect_lte(abs(refusal[["y"]] - (to[["y"]] + 8)), 2)
+})
+
+test_that("a link dropped on the canvas appends a block at the drop", {
+
+  app <- local_example_app("stacks")
+  wait_for_dag(app)
+
+  # A spot at the canvas's lower left, which no node covers.
+  dag <- box_of(app, "document.querySelector('.blockr-graph')")
+  to <- c(x = dag[["x"]] + 60, y = dag[["y"]] + dag[["height"]] - 40)
+  expect_identical(
+    app$get_js(
+      paste0(
+        "document.elementFromPoint(", to[["x"]], ", ", to[["y"]], ")",
+        ".closest('.react-flow__node') === null"
+      )
+    ),
+    TRUE
+  )
+  drop <- canvas_point(app, to)
+
+  before <- app_blocks(app)
+  drag_mouse(app, center_of(app, handle_js("iris", "out-bottom")), to)
+
+  # Append block's quick action opens at the drop, with the block classes.
+  app$wait_for_js("document.querySelector('[role=menu]') !== null")
+  click_row(app, "head/tail block")
+
+  wait_until(
+    function() length(app_blocks(app)) == length(before) + 1L,
+    function() "the board to gain the appended block"
+  )
+
+  added <- setdiff(app_blocks(app), before)
+  links <- app_links(app)
+  expect_identical(links[links$to == added, "from"], "iris")
+  expect_lte(max(abs(app_position(app, added) - drop)), 1)
+})
+
+test_that("Ctrl+C and Ctrl+V paste the block near the middle, on nothing", {
+
+  app <- local_example_app("stacks")
+  wait_for_dag(app)
+
+  # Chrome lets the page write the clipboard, and read it for the check below,
+  # for every origin, until the test ends.
+  page <- app$get_chromote_session()
+  for (name in c("clipboard-read", "clipboard-write")) {
+    page$parent$Browser$setPermission(
+      permission = list(name = name),
+      setting = "granted"
+    )
+  }
+  withr::defer(page$parent$Browser$resetPermissions())
+
+  click_at(app, center_of(app, mark_js("bod")))
+  press_key(app, "c", "KeyC", 67L, CTRL)
+
+  # Copy puts the JSON board on the system's clipboard, whose text the
+  # browser's paste hands the page.
+  copied <- page$Runtime$evaluate(
+    "navigator.clipboard.readText().catch((e) => 'No read: ' + e)",
+    awaitPromise = TRUE,
+    userGesture = TRUE
+  )
+  expect_match(copied[["result"]][["value"]], "\"format\"", fixed = TRUE)
+
+  dag <- box_of(app, "document.querySelector('.blockr-graph')")
+  middle <- canvas_point(
+    app,
+    c(
+      x = dag[["x"]] + dag[["width"]] / 2,
+      y = dag[["y"]] + dag[["height"]] / 2
+    )
+  )
+
+  before <- app_blocks(app)
+  press_paste(app)
+
+  wait_until(
+    function() length(app_blocks(app)) == length(before) + 1L,
+    function() "the board to gain the pasted block"
+  )
+
+  added <- setdiff(app_blocks(app), before)
+  expect_identical(app_board(app)[["blocks"]][[added]][["name"]], "Dataset")
+
+  # The view's middle lies in the box of the stack Joins, so the block lands
+  # at the free spot nearest the middle, whose node meets no other node, the
+  # box of a stack included.
+  expect_lte(sqrt(sum((app_position(app, added) - middle)^2)), 250)
+  met <- app$get_js(
+    sprintf(
+      "(() => {
+        const nodes = [
+          ...document.querySelectorAll('.blockr-graph .react-flow__node')
+        ];
+        const box = (n) => n.getBoundingClientRect();
+        const pasted = box(nodes.find((n) => n.dataset.id === 'b:%s'));
+        return nodes.filter((n) => n.dataset.id !== 'b:%s').filter((n) => {
+          const r = box(n);
+          return r.left < pasted.right && pasted.left < r.right &&
+            r.top < pasted.bottom && pasted.top < r.bottom;
+        }).map((n) => n.dataset.id);
+      })()",
+      added,
+      added
+    )
+  )
+  expect_length(met, 0L)
+})
+
+test_that("a paste with nothing to paste says why in a toast", {
+
+  app <- local_example_app("stacks")
+  wait_for_dag(app)
+
+  # Chrome refuses the page a read of the clipboard, for every origin, until
+  # the test ends.
+  page <- app$get_chromote_session()
+  page$parent$Browser$setPermission(
+    permission = list(name = "clipboard-read"),
+    setting = "denied"
+  )
+  withr::defer(page$parent$Browser$resetPermissions())
+
+  # Waits for a toast of core's basic frontend with the message, and returns
+  # whether the DAG showed a message of its own on the canvas.
+  toast <- function(message) {
+    app$wait_for_js(
+      sprintf("document.body.innerText.includes('%s')", message)
+    )
+    app$get_js("document.querySelector('.blockr-graph-refusal') !== null")
+  }
+
+  before <- app_blocks(app)
+
+  # The toolbar's Paste reads the clipboard of its own accord, which Chrome
+  # refuses, and the page has copied nothing.
+  click_at(
+    app,
+    center_of(
+      app,
+      "document.querySelector('.blockr-graph-toolbar [aria-label=\"Paste\"]')"
+    )
+  )
+  expect_false(toast("The browser did not let the page read the clipboard."))
+
+  # Ctrl+V pastes what the browser's own paste hands the page, for which
+  # Chrome asks no permission: here, an empty clipboard.
+  page$parent$Browser$setPermission(
+    permission = list(name = "clipboard-write"),
+    setting = "granted"
+  )
+  page$Runtime$evaluate(
+    "navigator.clipboard.writeText('')",
+    awaitPromise = TRUE,
+    userGesture = TRUE
+  )
+  click_at(app, center_of(app, mark_js("bod")))
+  press_paste(app)
+  expect_false(toast("The clipboard holds no board objects to paste."))
+
+  expect_identical(app_blocks(app), before)
 })
 
 test_that("the arrow keys move the selected block, in one step", {

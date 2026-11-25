@@ -255,15 +255,64 @@ drag_mouse <- function(app, from, to, held = function() NULL, steps = 20L) {
 
 NUDGE <- 2
 
-# Presses a key, as the element that has the keyboard's focus takes it.
-press_key <- function(app, key, code = key, key_code = 0L) {
+# Presses a key, as the element that has the keyboard's focus takes it, with
+# the modifiers that DevTools' bit field gives, as 2 for Ctrl, and the editing
+# commands that the key runs, as "paste".
+press_key <- function(app, key, code = key, key_code = 0L, modifiers = 0L,
+                      commands = NULL) {
   page <- app$get_chromote_session()
-  page$Input$dispatchKeyEvent(
+  down <- list(
     type = "rawKeyDown", key = key, code = code,
-    windowsVirtualKeyCode = key_code
+    windowsVirtualKeyCode = key_code, modifiers = modifiers
   )
+  if (!is.null(commands)) down[["commands"]] <- as.list(commands)
+  do.call(page$Input$dispatchKeyEvent, down)
   page$Input$dispatchKeyEvent(
     type = "keyUp", key = key, code = code,
-    windowsVirtualKeyCode = key_code
+    windowsVirtualKeyCode = key_code, modifiers = modifiers
+  )
+}
+
+CTRL <- 2L
+
+# Pastes with Ctrl+V, through the browser's own paste.
+# Chrome maps Ctrl+V to its paste itself on Linux and Windows.
+# On macOS, the system maps Cmd+V to it, which a key event that a test sends
+# skips, so the event names the command, as the system would.
+press_paste <- function(app) {
+  press_key(app, "v", "KeyV", 86L, CTRL, commands = "paste")
+}
+
+# The point on the canvas under a point on the page, from the view's pan and
+# zoom.
+canvas_point <- function(app, at) {
+  view <- app$get_js(
+    "document.querySelector('.react-flow__viewport').style.transform"
+  )
+  numbers <- as.numeric(regmatches(view, gregexpr("-?[0-9.]+", view))[[1]])
+  dag <- box_of(app, "document.querySelector('.blockr-graph')")
+  c(
+    x = (at[["x"]] - dag[["x"]] - numbers[[1]]) / numbers[[3]],
+    y = (at[["y"]] - dag[["y"]] - numbers[[2]]) / numbers[[3]]
+  )
+}
+
+# The ids of the blocks of the board that the client holds.
+app_blocks <- function(app) {
+  names(app_board(app)[["blocks"]])
+}
+
+# Clicks the row of the menu of board actions that is open, by the start of
+# its text.
+click_row <- function(app, text) {
+  click_at(
+    app,
+    center_of(
+      app,
+      paste0(
+        "[...document.querySelectorAll('[role=menu] [role^=menuitem]')]",
+        ".find(row => row.textContent.trim().startsWith('", text, "'))"
+      )
+    )
   )
 }
