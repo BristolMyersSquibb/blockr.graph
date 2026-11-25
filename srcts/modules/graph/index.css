@@ -13,7 +13,11 @@
  * - React Flow sets `color-scheme: light dark` on its root, so that it follows
  *   the system's mode. The DAG follows the mode that core's board option
  *   dark_mode switches the page to instead, which core writes on the page's
- *   root as data-bc-theme.
+ *   root as data-bc-theme. It sets that mode on its own element, whose
+ *   background the system colour Canvas paints, and React Flow's root, the
+ *   toolbar and the panel inherit it from there. The element that holds the
+ *   DAG can be of another mode: the dock's shell keeps the light mode of
+ *   dockview's theme while core's mode is dark.
  */
 
 @import "../../flow/vendor.css";
@@ -63,11 +67,11 @@
   --xy-attribution-background-color: transparent;
 }
 
-:root[data-bc-theme="dark"] .blockr-graph .react-flow {
+:root[data-bc-theme="dark"] .blockr-graph {
   color-scheme: dark;
 }
 
-:root[data-bc-theme="light"] .blockr-graph .react-flow {
+:root[data-bc-theme="light"] .blockr-graph {
   color-scheme: light;
 }
 

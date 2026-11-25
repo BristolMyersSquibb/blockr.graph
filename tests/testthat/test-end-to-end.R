@@ -29,6 +29,39 @@ test_that("the DAG draws the board in core's basic frontend", {
   expect_lte(app_zoom(app), 1)
 })
 
+test_that("the DAG takes core's dark mode in a container of the light mode", {
+
+  app <- local_example_app("stacks")
+  wait_for_dag(app)
+
+  # The dock's shell holds the DAG in the light mode of dockview's theme while
+  # core's mode is dark.
+  # The canvas then paints the dark mode's Canvas, and the toolbar is of the
+  # dark mode as well.
+  modes <- app$get_js(
+    "(() => {
+      document.documentElement.setAttribute('data-bc-theme', 'dark');
+      const graph = document.querySelector('.blockr-graph');
+      graph.parentElement.style.colorScheme = 'light';
+      const probe = document.createElement('div');
+      probe.style.cssText = 'color-scheme: dark; background: Canvas';
+      document.body.append(probe);
+      const dark = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      const toolbar = document.querySelector('.blockr-graph-toolbar');
+      return {
+        graph: getComputedStyle(graph).colorScheme,
+        toolbar: getComputedStyle(toolbar).colorScheme,
+        painted: getComputedStyle(graph).backgroundColor === dark
+      };
+    })()"
+  )
+
+  expect_identical(modes[["graph"]], "dark")
+  expect_identical(modes[["toolbar"]], "dark")
+  expect_true(modes[["painted"]])
+})
+
 test_that("the DAG keeps where a drag moves a block once the drag ends", {
 
   app <- local_example_app("stacks")

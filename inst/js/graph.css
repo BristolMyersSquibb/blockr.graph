@@ -39,10 +39,10 @@
   --xy-selection-border: 1px dashed var(--blockr-graph-accent);
   --xy-attribution-background-color: transparent;
 }
-:root[data-bc-theme=dark] .blockr-graph .react-flow {
+:root[data-bc-theme=dark] .blockr-graph {
   color-scheme: dark;
 }
-:root[data-bc-theme=light] .blockr-graph .react-flow {
+:root[data-bc-theme=light] .blockr-graph {
   color-scheme: light;
 }
 .blockr-graph .react-flow__node:focus,
