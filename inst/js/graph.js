@@ -723,7 +723,6 @@ var COPY2 = "blockr.graph-copy_action";
 var CUT = "blockr.graph-cut_action";
 var PASTE = "blockr.graph-paste_action";
 var LAYOUT = "blockr.graph-layout_action";
-var withdraw;
 var graphBoardActions = [
   {
     id: COPY2,
@@ -768,7 +767,6 @@ var graphBoardActions = [
       } catch {
         return void 0;
       }
-      warnDropped(core, read.dropped);
       const batch = pasteBatch(core.store.board(), read.board, notedPoint(), (taken) => core.mintId(taken));
       return batch.length === 0 ? void 0 : batch;
     }
@@ -789,17 +787,6 @@ function copy(target, core) {
     void writeClipboard(document, JSON.stringify(copiedBoard(core.store.jsonBoard(), copied)));
   }
   return copied;
-}
-function warnDropped(core, dropped) {
-  withdraw?.();
-  withdraw = void 0;
-  const lines = dropped.flatMap((item) => "block" in item ? [`- block "${item.block}" (${item.registry_id})`] : []);
-  if (lines.length === 0) return;
-  withdraw = core.notifications.notify(GRAPH, {
-    severity: "warning",
-    code: "graph_paste_dropped",
-    message: ["Paste left out these blocks, since the app lacks their classes:", ...lines].join("\n")
-  });
 }
 
 // srcts/layout/layout.ts

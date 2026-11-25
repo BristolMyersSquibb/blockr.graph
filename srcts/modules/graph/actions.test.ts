@@ -139,7 +139,7 @@ describe("Paste", () => {
     expect(Object.values(core.store.board().blocks).filter((block) => block.name === "Scatter")).toHaveLength(2);
   });
 
-  test("leaves out a block whose class the app lacks, with a warning about the DAG that names it", async () => {
+  test("leaves out a block whose class the app lacks", async () => {
     const { core } = await start();
     const json = core.store.jsonBoard();
     const iris = json.board.blocks.a;
@@ -160,9 +160,6 @@ describe("Paste", () => {
     const names = Object.values(core.store.board().blocks).map((block) => block.name);
     expect(names.filter((name) => name === "Iris")).toHaveLength(2);
     expect(names).not.toContain("Ghost");
-    const warning = core.notifications.get().find((each) => each.source.kind === "module" && each.source.code === "graph_paste_dropped");
-    expect(warning?.severity).toBe("warning");
-    expect(warning?.message).toContain('block "z" (blockr.ghost-ghost_block)');
   });
 });
 

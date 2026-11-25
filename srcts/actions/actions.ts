@@ -22,9 +22,10 @@
 //   noted last (./paste.ts, ./noted.ts). Its run returns a promise, since it
 //   reads the clipboard before it returns its batch. It leaves the board alone
 //   where the text is no JSON board, as today's paste does. A block whose
-//   class the app lacks is left out of the paste, with a warning about the
-//   DAG that names it, of the code `graph_paste_dropped`, which holds until
-//   the next paste or the next board.
+//   class the app lacks is left out of the paste, since the store leaves it
+//   out of the board that it reads. The DAG raises no notification of it, as
+//   core is to raise one for what read() leaves out
+//   (https://github.com/BristolMyersSquibb/blockr.core/issues/878).
 // - Layout's quick action lays the board out again and sets the placement of
 //   new blocks and snapping (./layout.ts).
 //
@@ -36,8 +37,7 @@
 // stack that the board holds, so that no menu offers them for a link alone.
 
 import type { BoardAction, CommandCall, CoreApi, Target } from "@blockr/core";
-import type { Dropped } from "@blockr/core";
-import { defaultState, GRAPH, graphState } from "../state/index.ts";
+import { defaultState, graphState } from "../state/index.ts";
 import { readClipboard, writeClipboard } from "./clipboard.ts";
 import { copiedBoard, copiedOf, copies } from "./copy.ts";
 import type { Copied } from "./copy.ts";
@@ -50,9 +50,6 @@ export const COPY = "blockr.graph-copy_action";
 export const CUT = "blockr.graph-cut_action";
 export const PASTE = "blockr.graph-paste_action";
 export const LAYOUT = "blockr.graph-layout_action";
-
-// What withdraws the warning of the last paste that left out blocks.
-let withdraw: (() => void) | undefined;
 
 export const graphBoardActions: readonly BoardAction[] = [
   {
@@ -98,7 +95,6 @@ export const graphBoardActions: readonly BoardAction[] = [
       } catch {
         return undefined;
       }
-      warnDropped(core, read.dropped);
       const batch = pasteBatch(core.store.board(), read.board, notedPoint(), (taken) => core.mintId(taken));
       return batch.length === 0 ? undefined : batch;
     },
@@ -123,18 +119,4 @@ function copy(target: Target, core: CoreApi): Copied {
     void writeClipboard(document, JSON.stringify(copiedBoard(core.store.jsonBoard(), copied)));
   }
   return copied;
-}
-
-// Warns about the blocks that the paste left out, since the app lacks their
-// classes, in place of the warning of the paste before.
-function warnDropped(core: CoreApi, dropped: readonly Dropped[]): void {
-  withdraw?.();
-  withdraw = undefined;
-  const lines = dropped.flatMap((item) => ("block" in item ? [`- block "${item.block}" (${item.registry_id})`] : []));
-  if (lines.length === 0) return;
-  withdraw = core.notifications.notify(GRAPH, {
-    severity: "warning",
-    code: "graph_paste_dropped",
-    message: ["Paste left out these blocks, since the app lacks their classes:", ...lines].join("\n"),
-  });
 }
