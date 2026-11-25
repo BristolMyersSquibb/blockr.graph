@@ -1,0 +1,514 @@
+---
+title: "User guide"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{User guide}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  render = function(x, ...) {
+    if (inherits(x, "shiny.appobj")) invisible() else knitr::knit_print(x, ...)
+  }
+)
+```
+
+```{r setup, message = FALSE}
+library(blockr.core)
+library(blockr.graph)
+```
+
+The package blockr.graph draws a blockr board in the browser as a directed acyclic graph, the DAG.
+Each block shows as a node, each link as an arrow from one block to another, and each stack as a box around its blocks.
+In the DAG, a user arranges the blocks, links them, adds and removes them, and finds their way around a large board.
+This guide is for the people who use the DAG and for those who build apps with it.
+It says what the DAG shows, what a user does there, how the DAG places blocks, and what a reader can do on a locked board.
+Its last section shows how an app script gives the DAG its state.
+
+## A board in the DAG
+
+This script builds a board of six blocks, three of them in a stack, and serves it:
+
+```{r}
+blocks <- c(
+  iris = new_dataset_block("iris"),
+  head = new_head_block(n = 10L),
+  bound = new_rbind_block(),
+  bod = new_dataset_block("BOD"),
+  cw = new_dataset_block("ChickWeight"),
+  joined = new_merge_block("Time")
+)
+
+links <- c(
+  new_link("iris", "head", "data"),
+  new_link("head", "bound", ""),
+  new_link("bod", "joined", "x"),
+  new_link("cw", "joined", "y")
+)
+
+stacks <- c(
+  joins = new_stack(c("bod", "cw", "joined"), name = "Joins")
+)
+
+serve(new_board(blocks, links, stacks))
+```
+
+An app runs every plugin that `available_plugins()` gives, unless its script names the plugins in the `plugins` of `serve()`.
+So the DAG runs in every app where blockr.graph is installed.
+The page shows the DAG under its name, Workflow.
+Under core's basic frontend, the DAG has a section beside the board's blocks, half as tall as the window.
+Under blockr.dock, it has a panel of the dock, as every plugin with a UI has.
+
+The script gives the DAG no positions for the blocks.
+So the DAG lays the whole board out as it opens, from top to bottom, with the blocks of the stack Joins together in its box.
+The last section, [The DAG's state in an app script](#app-script), shows how a script puts the blocks where it wants them.
+
+## What the DAG shows
+
+### Blocks
+
+Each block shows as a node: the block's mark, with the block's name below it.
+The mark is the icon of the block's class, on a tint of the colour of the class's category, as on the block's card.
+
+A dot on the lower right corner of the mark shows the block's status, in the colour that the block's card gives the status:
+
+| Status | Dot | Its tooltip |
+|---|---|---|
+| Ready | Green | Up to date |
+| Stale | Grey | Inputs changed since this block last ran |
+| Unevaluated | Grey ring | Not evaluated yet |
+| Invalid | Amber | Set this block's inputs |
+| Waiting | Amber ring | Waiting for a data input |
+| Failed | Red | Evaluation failed |
+
+The dot is a ring for a block that has not run yet or that waits for a data input.
+So the two grey dots differ by their shape, and so do the two amber ones.
+The dot also shows failed where R could not make the block's output, though the block's status is ready.
+
+Small circles on the edges of the mark are the block's handles: one for each data input of the block's class, and one for its result.
+A block that takes any number of inputs, as the rbind block does, has a handle for each link into it, and a placeholder for its next input.
+A handle sits on the side of the mark that faces the block at the other end of its link.
+So a link stays short wherever the user moves either block.
+A handle that no link uses sits on the side that the layout's direction gives.
+From top to bottom, an input sits on top of the mark, and the result below the block's name.
+From left to right, an input sits on the left of the mark, and the result on its right.
+
+While the pointer is over a handle, the handle grows, and a tooltip names it.
+It names an input with the block that feeds it, as "data, from Dataset", and names a placeholder "Next input".
+Where more handles share a side than fit on it, they crowd together, and they spread out while the pointer is over one of them.
+
+### Links
+
+A link is a curve with an arrow, from the result of the block that it comes from into the input that it feeds.
+While the pointer is over a link, the link shows the name of that input.
+
+### Stacks
+
+A stack is a box behind its blocks, in the stack's colour, with the stack's name above it.
+A stack that holds no block is a small box with its name and "0 blocks".
+A block that the user drops on that box joins the stack.
+
+The button at the top right of a stack's box collapses the stack, and so does a double click on the box.
+A collapsed stack shrinks to a small box with its name and the number of its blocks, centred where its box was.
+Its blocks hide, with the links between them.
+A link between one of its blocks and a block outside the stack ends on the small box.
+As the stack collapses, the blocks around it close up on the small box.
+
+The same button, or a double click, expands the stack again.
+Its blocks come back where they were, and the blocks around it go back where they were before the stack collapsed.
+This holds in whatever order the stacks of a board collapse and expand.
+A block that the user moved while the stack was collapsed stays where the user put it, unless it lies in the stack's box, which it then leaves.
+Dragging the small box of a collapsed stack moves the stack's hidden blocks with it, so that the stack expands where the box sits.
+The board keeps which stacks are collapsed, so a saved board reopens with its stacks as the user left them.
+
+### The empty board
+
+While the board holds no block, the canvas says "No blocks yet. Right-click to add one."
+
+## What a user does in the DAG
+
+Each change that the user makes in the DAG is one step, which the frontend's Undo takes back and its Redo makes again.
+The only exceptions are the placement and snapping, which move no block (see [Snapping](#snapping)).
+Saving the board keeps what the DAG holds: where each block sits, which stacks are collapsed, and the settings of the layout.
+
+### The view
+
+A drag on the empty canvas pans it, and the mouse wheel zooms it.
+The toolbar's Zoom in and Zoom out zoom the canvas too, and its Fit the view shows the whole board.
+The DAG fits the view to the board as it first shows a board, at most at full size.
+It fits the view again after the user lays the board out again.
+It fits the view on no other change, so that the view never moves under the user.
+So a block that the user adds elsewhere, as in the Edit board plugin, can land outside the view.
+Fit the view then shows it.
+
+While the page stays open, the DAG keeps the zoom and the pan of each board.
+So when the dock shows the DAG's panel again, the view is where the user left it.
+The board does not keep them, since what one user looks at is no part of the board.
+
+### Selecting
+
+A click selects a block, a link or a stack, and a click on the empty canvas clears the selection.
+A click with Cmd on a Mac, or with Ctrl elsewhere, adds to the selection.
+A drag on the canvas with Shift held selects what its rectangle covers, with the links between the blocks that it covers.
+
+Selecting one block alone shows the block in the frontend.
+Core's basic frontend scrolls to the block's card, and blockr.dock shows the card in the active view.
+Selecting several objects, a link or a stack shows nothing.
+
+The DAG shares its selection with the app's other plugins.
+So the blocks that the user ticks in the Edit board plugin show as selected in the DAG, and the DAG's toolbar and keys act on them.
+
+### Moving blocks
+
+Dragging a block moves it, and dragging one of several selected blocks moves them all.
+Dragging a stack's box moves the stack with its blocks.
+A drag selects nothing, so moving a block does not show it in the frontend.
+A block that the user drops on the box of another stack joins that stack.
+A block that the user drags out of its stack's box stays in the stack, whose box grows to hold it.
+Edit stack, in the stack's menu, takes a block out of the stack.
+A drag is one step.
+
+The arrow keys move the selected blocks while one of them has the keyboard's focus, by 5 px a press, or 20 px with Shift.
+Tab moves the focus from block to block, and Enter or Space selects the block that has the focus.
+So the keyboard alone can arrange the board.
+A run of presses of the arrow keys is one step, which ends once the user pauses.
+
+### Drawing links
+
+Dragging from the result's handle of one block to an input's handle of another block draws a link.
+So does dragging from an input's handle to a result's handle.
+A link dropped on a placeholder takes the block's next input.
+The DAG checks nothing while the user drags.
+Where the board refuses the link, as one that would close a cycle or feed an input that a link feeds already, the DAG draws no link and shows why at the drop.
+
+A link dropped on an empty spot of the canvas adds a block there.
+From a result, the drop opens Append block, and from an input, it opens Prepend block.
+Each lists the block classes that the user can pick.
+The block that the user picks starts at the drop, and a link joins it to the handle where the drag started.
+A link dropped on a block or on a stack's box, away from the handles, adds nothing.
+
+### Menus
+
+A right click opens the menu of what lies under the pointer: a block, a link, a stack, an input's handle, or the empty canvas.
+Where the object is one of several that the user selected, the menu acts on the whole selection.
+So does a right click on the box around a selection.
+
+The menus offer board actions: those of blockr.core, the DAG's own Copy, Cut, Paste and Layout, and those that other packages add.
+Every menu of an object offers the same board actions.
+So a block's menu in the DAG offers what the menu behind ⋯ on the block's card offers.
+In an app of blockr.core and blockr.graph alone, the menus offer these:
+
+| A right click on | Its menu offers |
+|---|---|
+| A block, or its result's handle | Append block, Create link, Create stack, Rename, Edit inputs, Add to stack, Copy block ID, Copy, Cut and Remove block |
+| A link | Insert block, Edit link and Remove link |
+| A stack | Rename, Edit stack, Copy, Cut and Remove stack |
+| An input's handle | The menu of the link that feeds the input, or where no link does, Prepend block and Create link |
+| A selection of several | Create stack, Add to stack, Copy, Cut and Remove |
+| The empty canvas | Add block, Create link, Create stack, Layout and Paste |
+
+A menu leaves out a board action that does not apply, as Add to stack on a board without stacks.
+A row either runs its board action at once, as Remove block does, or opens the board action's quick action, a short list beside the menu.
+The quick action of Append block, for one, lists the block classes that it can add.
+What a board action of the canvas's menu adds starts where the user right-clicked.
+Where the board refuses what a row asks, the DAG shows why where the user opened the menu.
+
+### Forms below the canvas
+
+Some board actions take a form, as Edit inputs does.
+A quick action that has a form offers it through Show all options, the icon at the top right of its list.
+The DAG shows such a form in a panel below its canvas.
+The canvas shrinks above the panel, and pans where the panel would hide the block, link or stack that the form is about.
+The panel closes once the form is done, or as the user presses its Close button or Escape.
+
+The panel's Pin button keeps the panel open once the form is done.
+A pinned panel follows the selection.
+So as the user selects another block, a pinned Edit inputs shows the inputs of that block.
+A pinned Append block moves on to the block that it appended, so that the user can append a chain of blocks.
+
+Where the DAG is narrower than 420 px, or lower than 400 px, the frontend shows the form in its own place instead, as the dock does in its sidebar.
+
+### The toolbar
+
+The toolbar floats in a column at the top left of the canvas.
+Each of its buttons has a tooltip that names it.
+From the top, it holds:
+
+1. Search blocks, which opens the panel of search and the outline.
+2. Zoom in, Zoom out and Fit the view.
+3. Add to the board, a + that offers Add block, Create link and Create stack.
+4. Paste and Layout.
+
+While the user has selected something, buttons for the selection follow:
+
+5. Add the selection to a stack, a + that offers Create stack and Add to stack.
+6. Copy, Cut and Remove.
+
+A block that the toolbar's Add block adds, and a stack that its Create stack adds, start at the middle of the view.
+The toolbar shows only what the board offers at the moment, so a button that would offer nothing does not show.
+
+### Search and the outline
+
+Search blocks, the toolbar's first button, opens a panel beside the toolbar.
+Its field narrows the panel to the blocks and stacks whose name or ID holds what the user types, the stacks first.
+
+While the field is empty, the panel shows the outline, Board contents.
+The outline lists each stack with the number of its blocks, and its blocks in the order of their links, and then the blocks in no stack.
+A stack that is collapsed on the canvas shows folded in the outline.
+Folding a stack in the outline leaves the canvas alone.
+
+Picking a row moves the view to the block or the stack and selects it.
+So picking a block shows the block, as a click on its node does.
+Picking a block of a collapsed stack expands the stack first, which moves the blocks around the stack, as every expand does.
+Escape, a click outside the panel or a pick closes the panel.
+
+### Copy, cut and paste
+
+Copy puts the blocks and stacks that it acts on onto the clipboard, as a JSON board.
+That board holds the blocks of the copied stacks too, the links between the copied blocks, and where each copied block sits.
+Cut copies, then removes what it copied, in one step.
+
+Paste adds what the clipboard holds under new IDs, arranged as it was copied.
+The blocks keep their names, and the name of each stack gains " (copy)".
+The middle of what Paste adds lands where the user opened the menu.
+From the toolbar or the key, it lands at the middle of the view.
+Where that spot is taken, it lands on the free spot nearest it, so that no other block moves.
+A paste is one step.
+
+The clipboard is the system's, so a copy made in another tab or app pastes too.
+A browser asks the user before a page reads the clipboard of its own accord, as Paste does from a menu or the toolbar.
+Safari and Firefox show a button "Paste" for the user to press, and Chrome asks for a permission.
+The key for paste, Cmd+V on macOS and Ctrl+V elsewhere, pastes without asking, since it runs the browser's own paste.
+Where the browser does not let the page read the clipboard, Paste takes the last copy made on the page.
+Where the clipboard holds no blocks or stacks, Paste adds nothing and says so.
+Paste leaves out a block whose class the app does not offer.
+
+### Keys
+
+The DAG's keys act while the keyboard's focus is in the DAG, as after a click on its canvas or on a block.
+They never act while the user types in a field, the fields of the DAG's own panels among them.
+
+| Key | What it does |
+|---|---|
+| Backspace | Removes the selection |
+| Cmd+C on macOS, Ctrl+C elsewhere | Copies the selection, unless the user has selected text, which the browser copies |
+| Cmd+X on macOS, Ctrl+X elsewhere | Cuts the selection, unless the user has selected text |
+| Cmd+V on macOS, Ctrl+V elsewhere | Pastes |
+| The arrow keys | Move the selected blocks while one of them has the focus, by 5 px, or 20 px with Shift |
+| Tab | Moves the focus to the next block |
+| Enter or Space | Selects the block that has the focus |
+| Escape | Closes the panel of a form, unless it is pinned, and takes the block that has the focus out of the selection |
+
+The DAG binds no key for Undo and Redo, which are the frontend's.
+
+Three keys differ from those of blockr.dag, the package that drew the DAG before blockr.graph.
+In each, the DAG takes the key of React Flow, the library that draws it.
+Users know these keys from other editors built on React Flow:
+
+- Backspace removes the selection, where blockr.dag takes Ctrl with Backspace.
+- A drag with Shift held selects by a rectangle, where blockr.dag takes Alt.
+- A click with Cmd or Ctrl adds to the selection, where blockr.dag takes Shift.
+
+## How the DAG places blocks
+
+The DAG gives every block a position on the canvas, and the board keeps it.
+A block moves only in these cases:
+
+- Someone moves it.
+- Someone lays the board out again.
+- A stack near it collapses or expands.
+- A step adds a block or a stack near it while the placement is Repulsion.
+
+Someone may be the user or the assistant.
+The DAG's board action Layout sets how the DAG places blocks.
+Its menu opens from the toolbar or from the menu of the empty canvas.
+
+### Placing what a step adds
+
+Whatever a step adds gets its place in the same step, one block or many, whoever adds it.
+That may be a menu of the DAG, its toolbar, a paste, another plugin, such as the Edit board plugin, or the assistant.
+So one Undo takes back what the step added, with its place, and with what moved to make room for it.
+
+What a step adds starts at a point where the user gives one:
+
+- What the menu of the empty canvas adds starts where the user right-clicked.
+- What a link dropped on the canvas adds starts at the drop.
+- What the toolbar's Add block and Create stack add starts at the middle of the view.
+- What Paste adds starts where the user pasted.
+
+In each case, the DAG puts what the step adds on the free spot nearest the point, with the spacing's gap around it, so that no other block moves.
+
+Otherwise, a block starts by its links, next to the blocks that it is linked to, in the way that their links run:
+
+- A block appended to a block that feeds no other block yet starts one rank past it.
+  From top to bottom, that is below it, and from left to right, to its right.
+  Where the user has arranged the links into that block another way, the new block follows them.
+- A block appended to a block that feeds other blocks already starts one gap past the last of those, level with it.
+- A block inserted into a link starts between the link's two blocks.
+- A block linked to none starts after the last block of the first rank.
+- Several blocks that one step adds start in the order of their links, so that a new chain comes out as a chain.
+
+The placement then fits in what the step adds.
+Layout's menu sets it, under New blocks:
+
+- Repulsion, the default, keeps what the step adds where it starts, and moves the blocks around it out of its way.
+  The nearest blocks move the most, those further away less, and no two neighbours swap sides.
+  So an inserted block stays between its two blocks, and the block that the link fed moves the most.
+- Beside moves what the step adds, as a whole, to the nearest free spot, and moves no other block.
+
+As a stack collapses or expands, the DAG moves the blocks around it in the same way: the nearest the most, and no two neighbours swap sides.
+
+### Laying the board out again
+
+Lay out again, in Layout's menu, lays the whole board out, with the direction and the spacing that the menu checks.
+Picking another direction or spacing there lays the board out with that one.
+
+- Top to bottom ranks the blocks downwards, so that links run down.
+  Left to right ranks them rightwards, so that links run to the right.
+- The spacings Compact, Normal and Loose leave gaps of 50, 70 and 100 px between blocks and between ranks.
+
+Each stack keeps its blocks together in its box.
+A collapsed stack lays out as its small box, and its blocks keep their places in it.
+Laying the board out moves every block, in one step, and the view then fits the board.
+
+The DAG lays the whole board out only when someone asks for it, and as a board opens without positions.
+Adding a block never lays the board out.
+
+### Snapping
+
+Snap to grid, in Layout's menu, turns snapping on or off.
+While snapping is on, every position that the DAG sets snaps to a multiple of the snap size.
+The row Snap size… of the menu sets the snap size, which is 20 px by default.
+
+Turning snapping on moves no block.
+A block snaps once something moves it:
+
+- A drag snaps each block that it moves.
+- The arrow keys move the selected blocks by the snap size.
+- Laying the board out again snaps every block.
+
+Picking a placement and turning snapping on or off move no block.
+So Undo skips them: a user who drags a block, then turns snapping on, and then presses Undo takes back the drag.
+The board still keeps both settings, and saving the board saves them.
+
+### What each of them cannot do
+
+- Beside moves no other block.
+  So on a crowded board, a new block can land further from the blocks that it reads from.
+- Making room keeps the arrangement around what it makes room for, but not the ranks of a board that was laid out.
+  Laying the board out again restores them.
+- Making room keeps every two neighbours in their order.
+  So the place of a stack that collapses closes only as far as that lets it.
+  The blocks beside a tall stack keep their rows, and leave room above and below its small box.
+- A block inserted among blocks lined up a gap apart, as in a column of a board that was laid out, pushes on the blocks lined up beyond it, as far as the line runs.
+- Snapping moves a block by up to half the snap size.
+  Where that brings a block that the DAG moved closer to another block than the gap, the block moves on to the nearest multiple that keeps the gap.
+  A block that the user moves only rounds.
+- All of them work from the size that a block's node usually takes, rather than from what the page measures.
+  So a long name can still overlap the name of a block beside it.
+
+## On a locked board
+
+An app turns the board lock on with the blockr option `locked`:
+
+```{r, eval = FALSE}
+options(blockr.locked = TRUE)
+
+serve(new_board(blocks, links, stacks))
+```
+
+The board lock fixes the board's blocks, links and stacks.
+So in the DAG, a reader draws no link and drops no block into another stack.
+The menus and the toolbar leave out every board action that adds, removes or renames a block or a stack, links two blocks, or moves a block into a stack.
+Of the DAG's own board actions, Copy and Layout stay, while Cut and Paste go.
+On a board without blocks, the canvas says only "No blocks yet."
+
+What the DAG keeps changes how the board shows, never what it computes.
+So the DAG locks none of it, and a reader can still explore the board:
+
+- Move blocks, with the pointer or the arrow keys.
+- Zoom, pan and fit the view.
+- Select blocks, links and stacks.
+- Search the board and use its outline.
+- Collapse and expand stacks.
+- Lay the board out again.
+- Copy blocks and stacks.
+
+The load lock and a block's lock change nothing in the DAG.
+
+## The DAG's state in an app script {#app-script}
+
+The board keeps the DAG's state, which holds three things:
+
+- Where each block sits on the canvas.
+- Which stacks are collapsed, and where each stack that holds no block sits.
+- The settings of the layout.
+
+An app script gives the DAG its state with `new_graph_plugin()`, which it passes in the board's `plugins`:
+
+```{r}
+dag <- new_graph_plugin(
+  positions = list(
+    iris = list(x = 0, y = 0),
+    head = list(x = 0, y = 150),
+    bound = list(x = 0, y = 300),
+    bod = list(x = 300, y = 0),
+    cw = list(x = 450, y = 0),
+    joined = list(x = 375, y = 150)
+  ),
+  layout = graph_layout(spacing = "compact", placement = "beside"),
+  collapsed = "joins"
+)
+
+serve(new_board(blocks, links, stacks, plugins = list(dag)))
+```
+
+Each position is the centre of a block's node, which holds its mark and its name below it.
+The script gives each position by the block's ID, in pixels of the canvas, with `x` to the right and `y` downwards.
+A block is about 50 px across, so a block beside another sits about 150 px from it.
+This script puts the chain of `iris`, `head` and `bound` on the left, from top to bottom.
+On its right, it puts `bod` and `cw` side by side, with `joined` below them.
+
+Where the script gives some blocks no position, the DAG places those as the board opens, as Beside places what a step adds.
+Every other block opens where the script put it.
+Where the script gives no position at all, or no DAG plugin, the DAG lays the whole board out as it opens.
+
+The function `graph_layout()` takes the settings of the layout, the same that Layout's menu sets in the app:
+
+- The `direction` is `"TB"`, from top to bottom, the default, or `"LR"`, from left to right.
+- The `spacing` is `"normal"`, the default, `"compact"` or `"loose"`.
+- The `placement` is `"repulsion"`, the default, or `"beside"`.
+- The flag `snap` says whether positions snap, and is `FALSE` by default.
+- The `snap_size` is the snap size in pixels, 20 by default.
+
+The direction and the spacing move no block until the DAG lays the board out, as it opens without positions or as someone lays it out again.
+The direction also gives the side of a handle that no link uses, and the way that a new block starts where no link shows the way.
+
+The argument `collapsed` names the stacks that the board opens with collapsed, by their IDs.
+Expanding such a stack moves only the blocks in the way of its box, since nothing moved as it collapsed.
+The function `plugin_state()` of blockr.core gives the state that the plugin holds:
+
+```{r}
+str(plugin_state(dag), max.level = 2)
+```
+
+The constructor takes no position for a stack.
+The DAG places each stack that holds no block as the board opens.
+
+The constructor checks the shape of what it is given, but knows nothing of the board.
+So a position or a collapsed stack that names a block or a stack that the board lacks reaches the browser.
+The DAG drops such an entry as the board opens, and names it in a warning, which the frontend shows.
+
+A script that names the plugins in the `plugins` of `serve()` has to name the DAG among them, by its id `graph_plugin`.
+This app runs core's basic frontend and the DAG, and no other plugin:
+
+```{r}
+plugins <- available_plugins()
+plugins <- plugins[plugins$id %in% c("basic_frontend_plugin", "graph_plugin"), ]
+
+serve(new_board(blocks, links, stacks, plugins = list(dag)), plugins = plugins)
+```

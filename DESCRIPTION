@@ -23,7 +23,11 @@ Suggests:
     withr,
     shinytest2,
     chromote,
-    yyjsonr
+    yyjsonr,
+    knitr,
+    rmarkdown,
+    quarto
+VignetteBuilder: quarto
 Remotes:
     BristolMyersSquibb/blockr.core@js-state
 Config/testthat/edition: 3
