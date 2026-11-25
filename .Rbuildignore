@@ -15,3 +15,5 @@
 ^eslint\.config\.ts$
 ^vitest\.config\.ts$
 ^coverage$
+^vignettes/\.quarto$
+^vignettes/.*_files$

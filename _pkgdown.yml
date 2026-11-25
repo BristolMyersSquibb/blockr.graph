@@ -1,3 +1,11 @@
 url: https://bristolmyerssquibb.github.io/blockr.graph/
 template:
   bootstrap: 5
+
+navbar:
+  components:
+    articles:
+      text: Articles
+      menu:
+      - text: User guide
+        href: articles/user-guide.html
