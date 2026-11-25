@@ -232,8 +232,28 @@ test_that("Ctrl+C and Ctrl+V paste the block near the middle, on nothing", {
   app <- local_example_app("stacks")
   wait_for_dag(app)
 
+  # Chrome lets the page write the clipboard, and read it for the check below,
+  # for every origin, until the test ends.
+  page <- app$get_chromote_session()
+  for (name in c("clipboard-read", "clipboard-write")) {
+    page$parent$Browser$setPermission(
+      permission = list(name = name),
+      setting = "granted"
+    )
+  }
+  withr::defer(page$parent$Browser$resetPermissions())
+
   click_at(app, center_of(app, mark_js("bod")))
   press_key(app, "c", "KeyC", 67L, CTRL)
+
+  # Copy puts the JSON board on the system's clipboard, whose text the
+  # browser's paste hands the page.
+  copied <- page$Runtime$evaluate(
+    "navigator.clipboard.readText().catch((e) => 'No read: ' + e)",
+    awaitPromise = TRUE,
+    userGesture = TRUE
+  )
+  expect_match(copied[["result"]][["value"]], "\"format\"", fixed = TRUE)
 
   dag <- box_of(app, "document.querySelector('.blockr-graph')")
   middle <- canvas_point(
