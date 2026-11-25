@@ -92,11 +92,15 @@ interface DragStart {
   readonly lead: string;
 }
 
-// Why the board took no link that the user dropped, and where on the canvas.
+// Why the board took no link that the user dropped, and where on the canvas,
+// as the DAG shows it, or a message that it shows there as information.
 export interface Refusal {
   readonly x: number;
   readonly y: number;
   readonly message: string;
+  // Whether the message informs, as that the clipboard holds nothing to
+  // paste, rather than refuses.
+  readonly info?: boolean;
 }
 
 export interface CanvasProps {

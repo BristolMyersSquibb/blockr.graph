@@ -20,12 +20,21 @@
 //   adds the blocks, links and stacks of that board under new ids, where they
 //   sat as they were copied, moved together to the point that the DAG's UI
 //   noted last (./paste.ts, ./noted.ts). Its run returns a promise, since it
-//   reads the clipboard before it returns its batch. It leaves the board alone
-//   where the text is no JSON board, as today's paste does. A block whose
-//   class the app lacks is left out of the paste, since the store leaves it
-//   out of the board that it reads. The DAG raises no notification of it, as
-//   core is to raise one for what read() leaves out
+//   reads the clipboard before it returns its batch. A block whose class the
+//   app lacks is left out of the paste, since the store leaves it out of the
+//   board that it reads. The DAG raises no notification of it, as core is to
+//   raise one for what read() leaves out
 //   (https://github.com/BristolMyersSquibb/blockr.core/issues/878).
+// - Where Paste adds nothing, it tells the user why, where the UI noted that
+//   they pasted, rather than leave the board alone in silence, as today's
+//   paste does:
+//   - That the clipboard holds no board objects to paste, where the text is
+//     no JSON board, as an empty clipboard's is, or a board that holds
+//     nothing. A board whose blocks were all left out gets no such word,
+//     since core is to name what it left out.
+//   - That the browser did not let the page read the clipboard, where it
+//     refuses and the page has copied nothing either.
+//   - Why the store refused a JSON board, as a refusal.
 // - Layout's quick action lays the board out again and sets the placement of
 //   new blocks and snapping (./layout.ts).
 //
@@ -43,13 +52,17 @@ import { copiedBoard, copiedOf, copies } from "./copy.ts";
 import type { Copied } from "./copy.ts";
 import { COPY_ICON, CUT_ICON, LAYOUT_ICON, PASTE_ICON } from "./icons.ts";
 import { layoutLevel } from "./layout.ts";
-import { notedPoint } from "./noted.ts";
+import { notedPaste } from "./noted.ts";
 import { pasteBatch } from "./paste.ts";
 
 export const COPY = "blockr.graph-copy_action";
 export const CUT = "blockr.graph-cut_action";
 export const PASTE = "blockr.graph-paste_action";
 export const LAYOUT = "blockr.graph-layout_action";
+
+// What Paste tells the user where it adds nothing.
+export const NOTHING_TO_PASTE = "The clipboard holds no board objects to paste.";
+export const CLIPBOARD_UNREAD = "The browser did not let the page read the clipboard.";
 
 export const graphBoardActions: readonly BoardAction[] = [
   {
@@ -87,16 +100,26 @@ export const graphBoardActions: readonly BoardAction[] = [
     category: "clipboard",
     offers: (_board, _target, lock) => !lock.board,
     async run(_board, _target, core) {
+      // What the UI noted as the user pasted, before the run waits for the
+      // clipboard, during which the user may open another menu.
+      const paste = notedPaste();
       const text = await readClipboard(document);
-      if (text === undefined) return undefined;
+      if (text === undefined) {
+        paste?.inform(CLIPBOARD_UNREAD);
+        return undefined;
+      }
       let read: Awaited<ReturnType<CoreApi["store"]["read"]>>;
       try {
         read = await core.store.read(text);
-      } catch {
+      } catch (error) {
+        if (isJsonBoard(text)) paste?.refuse(error instanceof Error ? error.message : String(error));
+        else paste?.inform(NOTHING_TO_PASTE);
         return undefined;
       }
-      const batch = pasteBatch(core.store.board(), read.board, notedPoint(), (taken) => core.mintId(taken));
-      return batch.length === 0 ? undefined : batch;
+      const batch = pasteBatch(core.store.board(), read.board, paste?.point, (taken) => core.mintId(taken));
+      if (batch.length > 0) return batch;
+      if (!read.dropped.some((dropped) => "block" in dropped)) paste?.inform(NOTHING_TO_PASTE);
+      return undefined;
     },
   },
   {
@@ -108,6 +131,18 @@ export const graphBoardActions: readonly BoardAction[] = [
     quick: (board, _target, core) => layoutLevel((graphState(board) ?? defaultState).layout, core),
   },
 ];
+
+// Whether the text is a JSON board, which records its format, as Copy writes
+// one, whatever the store then makes of it.
+function isJsonBoard(text: string): boolean {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  return typeof json === "object" && json !== null && !Array.isArray(json) && Object.hasOwn(json, "format");
+}
 
 // Puts the JSON board of what the target names on the clipboard, at once, so
 // that the write starts within the user's gesture, and returns what it

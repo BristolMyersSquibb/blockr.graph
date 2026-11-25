@@ -27,7 +27,8 @@
 // - The DAG shows why the board took no link that the user dropped, and a
 //   batch that the store or the command registry refused, where the user
 //   dropped the link, opened the menu or triggered the board action, until
-//   the user presses on the DAG or a moment has passed.
+//   the user presses on the DAG or a moment has passed. It shows why Paste
+//   added nothing there as well, as information where nothing refused it.
 
 import type { CoreApi, LinkId, PluginClassId } from "@blockr/core";
 import { useBoard } from "@blockr/core/react";
@@ -99,9 +100,9 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
   const stage = useRef<HTMLDivElement>(null);
   const stageOf = useCallback(() => stage.current, []);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
-  const refuse = useCallback((client: Point, message: string) => {
+  const tell = useCallback((client: Point, message: string, info: boolean) => {
     const box = element.current?.getBoundingClientRect();
-    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message });
+    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message, info });
   }, []);
   useEffect(() => {
     if (refusal === null) return;
@@ -125,7 +126,12 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
     core,
     element: elementOf,
     toCanvas: (client) => flow.screenToFlowPosition(client),
-    refuse,
+    refuse: (client, message) => {
+      tell(client, message, false);
+    },
+    inform: (client, message) => {
+      tell(client, message, true);
+    },
     panel: panel.advanced,
   });
 
@@ -230,7 +236,11 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
             <p className="blockr-graph-empty">{core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one."}</p>
           ) : null}
           {refusal === null ? null : (
-            <div className="blockr-graph-refusal" role="alert" style={{ left: refusal.x, top: refusal.y }}>
+            <div
+              className={refusal.info === true ? "blockr-graph-refusal blockr-graph-refusal-info" : "blockr-graph-refusal"}
+              role={refusal.info === true ? "status" : "alert"}
+              style={{ left: refusal.x, top: refusal.y }}
+            >
               {refusal.message}
             </div>
           )}

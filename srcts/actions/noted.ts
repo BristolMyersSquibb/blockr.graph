@@ -4,10 +4,12 @@
 // which share what the UI notes here
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2, notes):
 //
-// - The point where the user pastes, on the canvas. Before the UI calls
-//   menu(), it notes where the menu opens. Before it calls trigger() from its
-//   toolbar or a key, it notes the middle of its view. Paste's run reads the
-//   point that the UI noted last.
+// - Where the user pastes. Before the UI calls menu(), it notes the point on
+//   the canvas where the menu opens. Before it calls trigger() from its
+//   toolbar or a key, it notes the middle of its view. With the point, it
+//   notes how to tell the user why Paste adds nothing, where they opened the
+//   menu or triggered the board action, as it shows a refused batch there.
+//   Paste's run reads what the UI noted last.
 // - How each canvas that is mounted fits its view to the board. Layout's
 //   quick action fits the view once it has laid the board out again, as the
 //   canvas fits the view as it first mounts on a board. The canvas cannot
@@ -16,17 +18,29 @@
 
 import type { Point } from "../state/index.ts";
 
-let noted: Point | undefined;
+// Where the user pastes, as the UI notes it.
+export interface NotedPaste {
+  // The point on the canvas where the middle of what Paste adds lands.
+  readonly point: Point;
+  // Shows the message where the user opened the menu or triggered the board
+  // action, as information, such as that the clipboard holds nothing to
+  // paste.
+  readonly inform: (message: string) => void;
+  // Shows the message there as a refusal, as the DAG shows a refused batch.
+  readonly refuse: (message: string) => void;
+}
+
+let noted: NotedPaste | undefined;
 
 const fits = new Set<() => void>();
 
-export function notePoint(point: Point): void {
-  noted = point;
+export function notePaste(paste: NotedPaste): void {
+  noted = paste;
 }
 
-// The point that the UI noted last, or undefined where it has noted none, as
-// where another plugin triggers Paste.
-export function notedPoint(): Point | undefined {
+// What the UI noted last, or undefined where it has noted nothing, as where
+// another plugin triggers Paste before the user has used the DAG.
+export function notedPaste(): NotedPaste | undefined {
   return noted;
 }
 

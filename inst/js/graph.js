@@ -361,10 +361,10 @@ var LAYOUT_ICON = svg(
 // srcts/actions/noted.ts
 var noted;
 var fits = /* @__PURE__ */ new Set();
-function notePoint(point) {
-  noted = point;
+function notePaste(paste) {
+  noted = paste;
 }
-function notedPoint() {
+function notedPaste() {
   return noted;
 }
 function onFit(fit) {
@@ -1194,6 +1194,8 @@ var COPY2 = "blockr.graph-copy_action";
 var CUT = "blockr.graph-cut_action";
 var PASTE = "blockr.graph-paste_action";
 var LAYOUT = "blockr.graph-layout_action";
+var NOTHING_TO_PASTE = "The clipboard holds no board objects to paste.";
+var CLIPBOARD_UNREAD = "The browser did not let the page read the clipboard.";
 var graphBoardActions = [
   {
     id: COPY2,
@@ -1230,16 +1232,24 @@ var graphBoardActions = [
     category: "clipboard",
     offers: (_board, _target, lock) => !lock.board,
     async run(_board, _target, core) {
+      const paste = notedPaste();
       const text = await readClipboard(document);
-      if (text === void 0) return void 0;
+      if (text === void 0) {
+        paste?.inform(CLIPBOARD_UNREAD);
+        return void 0;
+      }
       let read;
       try {
         read = await core.store.read(text);
-      } catch {
+      } catch (error) {
+        if (isJsonBoard(text)) paste?.refuse(error instanceof Error ? error.message : String(error));
+        else paste?.inform(NOTHING_TO_PASTE);
         return void 0;
       }
-      const batch = pasteBatch(core.store.board(), read.board, notedPoint(), (taken) => core.mintId(taken));
-      return batch.length === 0 ? void 0 : batch;
+      const batch = pasteBatch(core.store.board(), read.board, paste?.point, (taken) => core.mintId(taken));
+      if (batch.length > 0) return batch;
+      if (!read.dropped.some((dropped) => "block" in dropped)) paste?.inform(NOTHING_TO_PASTE);
+      return void 0;
     }
   },
   {
@@ -1251,6 +1261,15 @@ var graphBoardActions = [
     quick: (board, _target, core) => layoutLevel((graphState(board) ?? defaultState).layout, core)
   }
 ];
+function isJsonBoard(text) {
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  return typeof json === "object" && json !== null && !Array.isArray(json) && Object.hasOwn(json, "format");
+}
 function copy(target, core) {
   const board = core.store.board();
   const copied = copiedOf(board, target);
@@ -1840,7 +1859,7 @@ function useGraphActions(parts) {
     []
   );
 }
-function graphActions({ core, element, toCanvas, refuse, panel }) {
+function graphActions({ core, element, toCanvas, refuse, inform, panel }) {
   const extendAt = (point) => (deltas) => {
     let after;
     try {
@@ -1853,12 +1872,23 @@ function graphActions({ core, element, toCanvas, refuse, panel }) {
   const notifierAt = (client) => (notifications) => {
     refuse(client, notifications.map((notification) => notification.message).join("\n"));
   };
+  const notePasteAt = (point, client) => {
+    notePaste({
+      point,
+      inform: (message) => {
+        inform(client, message);
+      },
+      refuse: (message) => {
+        refuse(client, message);
+      }
+    });
+  };
   return {
     menu(target, client) {
       const el = element();
       if (el === null) return;
       const point = toCanvas(client);
-      notePoint(point);
+      notePasteAt(point, client);
       const advanced = panel(target);
       core.boardActions.menu(target, {
         el,
@@ -1874,15 +1904,16 @@ function graphActions({ core, element, toCanvas, refuse, panel }) {
       if (el === null || frame === null) return;
       const middle = middleOf(frame);
       const at2 = "drop" in from ? from.drop : { client: middle, canvas: toCanvas(middle) };
-      notePoint(at2.canvas);
-      const advanced = panel(target);
       const button = "button" in from ? from.button.getBoundingClientRect() : void 0;
+      const told = button === void 0 ? at2.client : { x: button.right, y: button.top };
+      notePasteAt(at2.canvas, told);
+      const advanced = panel(target);
       const anchor = "drop" in from ? new DOMRect(from.drop.client.x, from.drop.client.y, 0, 0) : "button" in from ? besideToolbar(from.button) : void 0;
       await core.boardActions.trigger(id, target, {
         el,
         ...anchor === void 0 ? {} : { anchor },
         ..."board" in target || "drop" in from ? { extend: extendAt(at2.canvas) } : {},
-        notifier: notifierAt(button === void 0 ? at2.client : { x: button.right, y: button.top }),
+        notifier: notifierAt(told),
         ...advanced === void 0 ? {} : { advanced }
       }).catch(() => void 0);
     }
@@ -3436,9 +3467,9 @@ function GraphFrame({ core, plugin }) {
   const stage = useRef6(null);
   const stageOf = useCallback4(() => stage.current, []);
   const [refusal, setRefusal] = useState4(null);
-  const refuse = useCallback4((client, message) => {
+  const tell = useCallback4((client, message, info) => {
     const box = element.current?.getBoundingClientRect();
-    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message });
+    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message, info });
   }, []);
   useEffect5(() => {
     if (refusal === null) return;
@@ -3461,7 +3492,12 @@ function GraphFrame({ core, plugin }) {
     core,
     element: elementOf,
     toCanvas: (client) => flow.screenToFlowPosition(client),
-    refuse,
+    refuse: (client, message) => {
+      tell(client, message, false);
+    },
+    inform: (client, message) => {
+      tell(client, message, true);
+    },
     panel: panel.advanced
   });
   const graph = useMemo5(
@@ -3562,7 +3598,15 @@ function GraphFrame({ core, plugin }) {
             searching ? /* @__PURE__ */ jsx8(SearchPanel, { onClose: closeSearch }) : null
           ] }),
           empty ? /* @__PURE__ */ jsx8("p", { className: "blockr-graph-empty", children: core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one." }) : null,
-          refusal === null ? null : /* @__PURE__ */ jsx8("div", { className: "blockr-graph-refusal", role: "alert", style: { left: refusal.x, top: refusal.y }, children: refusal.message })
+          refusal === null ? null : /* @__PURE__ */ jsx8(
+            "div",
+            {
+              className: refusal.info === true ? "blockr-graph-refusal blockr-graph-refusal-info" : "blockr-graph-refusal",
+              role: refusal.info === true ? "status" : "alert",
+              style: { left: refusal.x, top: refusal.y },
+              children: refusal.message
+            }
+          )
         ] }),
         panel.view
       ]

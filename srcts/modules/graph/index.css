@@ -557,3 +557,10 @@
   white-space: pre-wrap;
   box-shadow: 0 2px 8px color-mix(in oklab, CanvasText 14%, transparent);
 }
+
+/* A message that informs, as that the clipboard holds nothing to paste, in the
+   colours of the DAG's text rather than those of a refusal. */
+.blockr-graph-refusal-info {
+  border-color: var(--blockr-graph-border);
+  color: var(--blockr-graph-text);
+}

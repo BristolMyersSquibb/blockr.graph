@@ -11,7 +11,7 @@ import type { CoreApi, JsonBoard } from "@blockr/core";
 import { HELLO, stubCore } from "@blockr/core/stubs";
 import type { StubCore } from "@blockr/core/stubs";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { COPY, CUT, LAYOUT, notePoint, onFit, PASTE } from "../../actions/index.ts";
+import { COPY, CUT, LAYOUT, NOTHING_TO_PASTE, notePaste, onFit, PASTE } from "../../actions/index.ts";
 import { defaultState, GRAPH } from "../../state/index.ts";
 import type { GraphState } from "../../state/index.ts";
 import * as graph from "./index.ts";
@@ -68,6 +68,22 @@ function paste(core: CoreApi): Promise<void> {
   return core.boardActions.trigger(PASTE, { board: true }, { el: document.body });
 }
 
+// What Paste tells the user where it adds nothing, from what the UI notes as
+// the user pastes at the point.
+function noted(point = { x: 0, y: 0 }): { informed: string[]; refused: string[] } {
+  const told = { informed: [] as string[], refused: [] as string[] };
+  notePaste({
+    point,
+    inform: (message) => {
+      told.informed.push(message);
+    },
+    refuse: (message) => {
+      told.refused.push(message);
+    },
+  });
+  return told;
+}
+
 describe("Copy", () => {
   test("puts a JSON board of what it acts on on the clipboard, with their positions, and changes nothing", async () => {
     const { core } = await start();
@@ -107,8 +123,9 @@ describe("Paste", () => {
   test("adds what was copied under new ids, with its middle where the user pastes, in one step", async () => {
     const { core } = await start();
     await stub?.menu({ stack: "s1" }).pick("Copy");
-    notePoint({ x: 1000, y: 1000 });
+    const told = noted({ x: 1000, y: 1000 });
     await paste(core);
+    expect(told).toEqual({ informed: [], refused: [] });
     const pasted = core.store.board();
     const added = Object.keys(pasted.blocks).filter((id) => !Object.hasOwn(POSITIONS, id));
     expect(added.map((id) => pasted.blocks[id]?.name)).toEqual(["Iris", "Head"]);
@@ -123,11 +140,36 @@ describe("Paste", () => {
     expect(Object.keys(core.store.board().blocks).sort()).toEqual(["a", "b", "c", "d", "e", "f"]);
   });
 
-  test("leaves the board alone where the clipboard holds no JSON board", async () => {
+  test("leaves the board alone, and tells the user that the clipboard holds no board objects, where it holds no JSON board", async () => {
     const { core } = await start();
-    await navigator.clipboard.writeText("Iris");
-    await paste(core);
+    // An empty clipboard, text, and JSON that is no board.
+    for (const text of ["", "Iris", "[1, 2]"]) {
+      await navigator.clipboard.writeText(text);
+      const told = noted();
+      await paste(core);
+      expect(told).toEqual({ informed: [NOTHING_TO_PASTE], refused: [] });
+    }
     expect(Object.keys(core.store.board().blocks)).toHaveLength(6);
+    expect(core.store.canUndo()).toBe(false);
+  });
+
+  test("tells the user that the clipboard holds no board objects where its board holds none", async () => {
+    const { core } = await start();
+    const json = core.store.jsonBoard();
+    await navigator.clipboard.writeText(JSON.stringify({ ...json, board: { ...json.board, blocks: {}, links: {}, stacks: {}, options: {}, plugins: {} } }));
+    const told = noted();
+    await paste(core);
+    expect(told).toEqual({ informed: [NOTHING_TO_PASTE], refused: [] });
+    expect(core.store.canUndo()).toBe(false);
+  });
+
+  test("tells the user why the store refused the JSON board on the clipboard", async () => {
+    const { core } = await start();
+    await navigator.clipboard.writeText(JSON.stringify({ ...core.store.jsonBoard(), format: 999 }));
+    const told = noted();
+    await paste(core);
+    expect(told.informed).toEqual([]);
+    expect(told.refused).toEqual([expect.stringContaining("format is 999")]);
     expect(core.store.canUndo()).toBe(false);
   });
 
@@ -160,6 +202,19 @@ describe("Paste", () => {
     const names = Object.values(core.store.board().blocks).map((block) => block.name);
     expect(names.filter((name) => name === "Iris")).toHaveLength(2);
     expect(names).not.toContain("Ghost");
+  });
+
+  test("tells nothing where it leaves out every block on the clipboard, which core is to name", async () => {
+    const { core } = await start();
+    const json = core.store.jsonBoard();
+    const iris = json.board.blocks.a;
+    if (iris === undefined) throw new Error("The fixture holds no block a.");
+    const ghost = { ...iris, registry_id: "blockr.ghost-ghost_block", name: "Ghost" };
+    await navigator.clipboard.writeText(JSON.stringify({ ...json, board: { ...json.board, blocks: { z: ghost }, links: {}, stacks: {}, options: {}, plugins: {} } }));
+    const told = noted();
+    await paste(core);
+    expect(told).toEqual({ informed: [], refused: [] });
+    expect(core.store.canUndo()).toBe(false);
   });
 });
 

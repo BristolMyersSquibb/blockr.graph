@@ -572,6 +572,24 @@ describe("a right click", () => {
     expect(refusal?.textContent).toContain('"zz"');
     expect([refusal?.style.left, refusal?.style.top]).toEqual(["300px", "200px"]);
   });
+
+  test("shows where the user pasted, as information, that the clipboard holds no board objects to paste", async () => {
+    const { el, core, stub } = await mounted();
+    await navigator.clipboard.writeText("");
+    await rightClick(pane(el), { x: 300, y: 200 });
+    await act(async () => {
+      await stub.menu()?.pick("Paste");
+    });
+    await vi.waitFor(() => {
+      expect(el.querySelector(".blockr-graph-refusal")).not.toBeNull();
+    });
+    const told = el.querySelector<HTMLElement>(".blockr-graph-refusal");
+    expect(told?.textContent).toBe("The clipboard holds no board objects to paste.");
+    expect(told?.classList.contains("blockr-graph-refusal-info")).toBe(true);
+    expect(told?.getAttribute("role")).toBe("status");
+    expect([told?.style.left, told?.style.top]).toEqual(["300px", "200px"]);
+    expect(core.store.canUndo()).toBe(false);
+  });
 });
 
 describe("the toolbar", () => {

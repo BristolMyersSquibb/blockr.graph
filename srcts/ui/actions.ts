@@ -26,13 +26,14 @@
 // - The panel of advanced actions as `advanced`, where the panel has room
 //   beside the object of the target (./panel.tsx).
 //
-// Before each call, the DAG notes the point where the user pastes, for
-// Paste's run: where the menu opens, or the middle of its view for a button or
-// a key (../actions).
+// Before each call, the DAG notes where the user pastes, for Paste's run: the
+// point on the canvas where the menu opens, or the middle of its view for a
+// button or a key, and how to tell the user why Paste adds nothing, where the
+// DAG shows a refused batch (../actions).
 
 import type { CoreApi, Notification, Target } from "@blockr/core";
 import { useEffect, useMemo, useRef } from "react";
-import { notePoint } from "../actions/index.ts";
+import { notePaste } from "../actions/index.ts";
 import type { Point } from "../state/index.ts";
 import { startAt } from "./added.ts";
 import type { Panel } from "./panel.tsx";
@@ -62,6 +63,9 @@ export interface ActionParts {
   readonly toCanvas: (client: Point) => Point;
   // Shows why the board took nothing, at a point on the screen.
   readonly refuse: (client: Point, message: string) => void;
+  // Shows a message at a point on the screen as information, such as that
+  // the clipboard holds nothing to paste.
+  readonly inform: (client: Point, message: string) => void;
   readonly panel: Panel["advanced"];
 }
 
@@ -83,7 +87,7 @@ export function useGraphActions(parts: ActionParts): GraphActions {
   );
 }
 
-export function graphActions({ core, element, toCanvas, refuse, panel }: ActionParts): GraphActions {
+export function graphActions({ core, element, toCanvas, refuse, inform, panel }: ActionParts): GraphActions {
   // What starts what the batch adds at the point, through `extend`.
   const extendAt = (point: Point) => (deltas: Parameters<typeof startAt>[1]) => {
     let after;
@@ -98,13 +102,26 @@ export function graphActions({ core, element, toCanvas, refuse, panel }: ActionP
   const notifierAt = (client: Point) => (notifications: readonly Notification[]) => {
     refuse(client, notifications.map((notification) => notification.message).join("\n"));
   };
+  // Notes the point on the canvas where the user pastes, and the point on the
+  // screen where the DAG tells them why Paste adds nothing.
+  const notePasteAt = (point: Point, client: Point) => {
+    notePaste({
+      point,
+      inform: (message) => {
+        inform(client, message);
+      },
+      refuse: (message) => {
+        refuse(client, message);
+      },
+    });
+  };
 
   return {
     menu(target, client) {
       const el = element();
       if (el === null) return;
       const point = toCanvas(client);
-      notePoint(point);
+      notePasteAt(point, client);
       const advanced = panel(target);
       core.boardActions.menu(target, {
         el,
@@ -120,16 +137,19 @@ export function graphActions({ core, element, toCanvas, refuse, panel }: ActionP
       if (el === null || frame === null) return;
       const middle = middleOf(frame);
       const at = "drop" in from ? from.drop : { client: middle, canvas: toCanvas(middle) };
-      notePoint(at.canvas);
-      const advanced = panel(target);
       const button = "button" in from ? from.button.getBoundingClientRect() : undefined;
+      // Where the DAG tells the user why the board action changed nothing:
+      // beside the button, at the drop, or at the middle of the view for a key.
+      const told = button === undefined ? at.client : { x: button.right, y: button.top };
+      notePasteAt(at.canvas, told);
+      const advanced = panel(target);
       const anchor = "drop" in from ? new DOMRect(from.drop.client.x, from.drop.client.y, 0, 0) : "button" in from ? besideToolbar(from.button) : undefined;
       await core.boardActions
         .trigger(id, target, {
           el,
           ...(anchor === undefined ? {} : { anchor }),
           ...("board" in target || "drop" in from ? { extend: extendAt(at.canvas) } : {}),
-          notifier: notifierAt(button === undefined ? at.client : { x: button.right, y: button.top }),
+          notifier: notifierAt(told),
           ...(advanced === undefined ? {} : { advanced }),
         })
         .catch(() => undefined);
