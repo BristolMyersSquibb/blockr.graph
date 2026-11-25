@@ -53,6 +53,15 @@ describe("Paste", () => {
     });
   });
 
+  test("moves what it adds on to the free spot nearest the point, where it would come within the gap of a node", () => {
+    const taken = boardOf({ blocks: { n1: "Taken" }, state: { positions: { n1: { x: 0, y: 0 } } } });
+    const one = boardOf({ blocks: { a: "Iris" }, state: { positions: { a: { x: 500, y: 500 } } } });
+    const [moved] = pasteBatch(taken, one, { x: 0, y: 0 }, minter()).slice(-1);
+    // The nodes of "Taken" and "Iris" are 41 and 35 px wide, so "Iris" keeps
+    // the gap of 70 px 108 px beside "Taken", which the grid rounds up to 110.
+    expect(moved?.args).toEqual({ positions: { n2: { x: -110, y: 0 } }, stacks: {} });
+  });
+
   test("keeps the positions as they were copied where no point is noted", () => {
     const [moved] = pasteBatch(board, read, undefined, minter()).slice(-1);
     expect(moved?.args).toEqual({ positions: { n2: { x: 100, y: 0 }, n3: { x: 100, y: 150 } }, stacks: { n5: { x: 300, y: 50 } } });

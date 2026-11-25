@@ -37,6 +37,19 @@ describe("what a board action adds", () => {
     expect(startAt(after, [{ stacks: { add: { t: held(after.stacks, "t") } } }], point)).toEqual([]);
   });
 
+  test("starts at the free spot nearest the point, out of the box of a stack that does not hold the block", () => {
+    const after = boardOf({
+      blocks: { a: "A", b: "B", n: "N" },
+      stacks: { s: ["a", "b"] },
+      state: { positions: { a: { x: 0, y: 0 }, b: { x: 400, y: 0 } } },
+    });
+    // The stack's box is 92 px tall, so the block's node keeps the gap of 70
+    // px from it 142 px above its middle, which the grid rounds up to 150.
+    expect(startAt(after, [{ blocks: { add: { n: held(after.blocks, "n") } } }], { x: 200, y: 0 })).toEqual([
+      { id: "blockr.graph-change_position", args: { positions: { n: { x: 200, y: -150 } } } },
+    ]);
+  });
+
   test("keeps the place that the batch gives what it adds, as Paste's", () => {
     const after = withState(boardOf({ blocks: { n: "New" } }), { positions: { n: { x: 500, y: 500 } } });
     expect(startAt(after, [{ blocks: { add: { n: held(after.blocks, "n") } } }], point)).toEqual([]);

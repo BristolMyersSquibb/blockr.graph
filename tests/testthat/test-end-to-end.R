@@ -227,7 +227,7 @@ test_that("a link dropped on the canvas appends a block at the drop", {
   expect_lte(max(abs(app_position(app, added) - drop)), 1)
 })
 
-test_that("Ctrl with C and V pastes the selected block at the view's middle", {
+test_that("Ctrl+C and Ctrl+V paste the block near the middle, on nothing", {
 
   app <- local_example_app("stacks")
   wait_for_dag(app)
@@ -254,7 +254,30 @@ test_that("Ctrl with C and V pastes the selected block at the view's middle", {
 
   added <- setdiff(app_blocks(app), before)
   expect_identical(app_board(app)[["blocks"]][[added]][["name"]], "Dataset")
-  expect_lte(max(abs(app_position(app, added) - middle)), 1)
+
+  # The view's middle lies in the box of the stack Joins, so the block lands
+  # at the free spot nearest the middle, whose node meets no other node, the
+  # box of a stack included.
+  expect_lte(sqrt(sum((app_position(app, added) - middle)^2)), 250)
+  met <- app$get_js(
+    sprintf(
+      "(() => {
+        const nodes = [
+          ...document.querySelectorAll('.blockr-graph .react-flow__node')
+        ];
+        const box = (n) => n.getBoundingClientRect();
+        const pasted = box(nodes.find((n) => n.dataset.id === 'b:%s'));
+        return nodes.filter((n) => n.dataset.id !== 'b:%s').filter((n) => {
+          const r = box(n);
+          return r.left < pasted.right && pasted.left < r.right &&
+            r.top < pasted.bottom && pasted.top < r.bottom;
+        }).map((n) => n.dataset.id);
+      })()",
+      added,
+      added
+    )
+  )
+  expect_length(met, 0L)
 })
 
 test_that("the arrow keys move the selected block, in one step", {

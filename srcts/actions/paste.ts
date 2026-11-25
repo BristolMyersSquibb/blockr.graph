@@ -9,7 +9,9 @@
 // 2. The batch holds core's commands that add the blocks, the stacks and the
 //    links, and then blockr.graph-change_position with the positions that the
 //    read board gives them in the DAG's state, moved together so that their
-//    middle lands at the point where the user pastes.
+//    middle lands at the point where the user pastes, or at the free spot
+//    nearest it, so that nothing pasted lands on a node or in a stack's box
+//    that the board shows (../placement/free.ts).
 //
 // The class's afterStep places what the batch adds from there, as it places
 // whatever a step adds, so that one undo takes the paste back. A pasted block
@@ -17,7 +19,9 @@
 // state would, starts where the placement strategy starts any added block.
 
 import type { BlockId, Board, CommandCall, StackId } from "@blockr/core";
-import { bounds } from "../geometry/index.ts";
+import { bounds, canvasOf } from "../geometry/index.ts";
+import type { Canvas } from "../geometry/index.ts";
+import { freeOffset, shownBoxes } from "../placement/index.ts";
 import { graphState, isPoint } from "../state/index.ts";
 import type { Point } from "../state/index.ts";
 
@@ -69,7 +73,7 @@ export function pasteBatch(board: Board, read: Board, point: Point | undefined, 
       },
     });
   }
-  const moved = positionsOf(read, blocks, stacks, point);
+  const moved = positionsOf(board, read, blocks, stacks, point);
   if (moved !== undefined) batch.push({ id: "blockr.graph-change_position", args: moved });
   return batch;
 }
@@ -93,12 +97,13 @@ function newId(ids: ReadonlyMap<string, string>, id: string): string {
   return minted;
 }
 
-// The args of blockr.core-change_position for what the paste adds: the
+// The args of blockr.graph-change_position for what the paste adds: the
 // positions that the read board gives the pasted blocks and the pasted
 // stacks that hold no block, moved together so that the middle of their
-// bounds lands at the point. It is undefined where the read board gives none
-// of them a position.
+// bounds lands at the point, or at the free spot on the board nearest it.
+// It is undefined where the read board gives none of them a position.
 function positionsOf(
+  board: Board,
   read: Board,
   blocks: ReadonlyMap<BlockId, BlockId>,
   stacks: ReadonlyMap<StackId, StackId>,
@@ -116,10 +121,24 @@ function positionsOf(
   });
   const box = bounds([...positions, ...points].map(([, at]) => ({ x: at.x, y: at.y, w: 0, h: 0 })));
   if (box === undefined) return undefined;
-  const dx = point === undefined ? 0 : point.x - box.x;
-  const dy = point === undefined ? 0 : point.y - box.y;
+  let dx = point === undefined ? 0 : point.x - box.x;
+  let dy = point === undefined ? 0 : point.y - box.y;
+  const onto = graphState(board);
+  if (onto !== undefined) {
+    const free = freeOffset(canvasOf(board, onto), shownBoxes(shiftedCanvas(canvasOf(read, state), dx, dy)), onto.layout);
+    dx += free.x;
+    dy += free.y;
+  }
   const moved = (entries: readonly [string, Point][]): Record<string, Point> =>
     Object.fromEntries(entries.map(([id, at]) => [id, { x: at.x + dx, y: at.y + dy }]));
   return { positions: moved(positions), stacks: moved(points) };
+}
+
+// The canvas with every block and every stack that holds no block moved by
+// dx and dy.
+function shiftedCanvas(canvas: Canvas, dx: number, dy: number): Canvas {
+  const by = (points: Readonly<Record<string, Point>>): Record<string, Point> =>
+    Object.fromEntries(Object.entries(points).map(([id, at]) => [id, { x: at.x + dx, y: at.y + dy }]));
+  return { ...canvas, positions: by(canvas.positions), points: by(canvas.points) };
 }
 
