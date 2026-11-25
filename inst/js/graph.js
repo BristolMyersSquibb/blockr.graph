@@ -254,6 +254,10 @@ function isRecordOf(value, item) {
 
 // srcts/actions/clipboard.ts
 var last;
+var pasted;
+function notePasted(text) {
+  pasted = text;
+}
 function writeClipboard(doc, text) {
   last = text;
   const clipboard = clipboardOf(doc);
@@ -264,6 +268,11 @@ function writeClipboard(doc, text) {
   );
 }
 async function readClipboard(doc) {
+  if (pasted !== void 0) {
+    const text = pasted;
+    pasted = void 0;
+    return text;
+  }
   const clipboard = clipboardOf(doc);
   if (clipboard === void 0) return last;
   try {
@@ -361,10 +370,10 @@ var LAYOUT_ICON = svg(
 // srcts/actions/noted.ts
 var noted;
 var fits = /* @__PURE__ */ new Set();
-function notePaste(paste) {
-  noted = paste;
+function notePoint(point) {
+  noted = point;
 }
-function notedPaste() {
+function notedPoint() {
   return noted;
 }
 function onFit(fit) {
@@ -1164,12 +1173,12 @@ function positionsOf(board, read, blocks, stacks, point) {
   const state = graphState(read);
   if (state === void 0) return void 0;
   const positions = Object.entries(state.positions).flatMap(([id, at2]) => {
-    const pasted = blocks.get(id);
-    return pasted === void 0 ? [] : [[pasted, at2]];
+    const pasted2 = blocks.get(id);
+    return pasted2 === void 0 ? [] : [[pasted2, at2]];
   });
   const points2 = Object.entries(state.stacks).flatMap(([id, entry]) => {
-    const pasted = stacks.get(id);
-    return pasted === void 0 || !isPoint(entry) || (read.stacks[id]?.blocks.length ?? 0) > 0 ? [] : [[pasted, entry]];
+    const pasted2 = stacks.get(id);
+    return pasted2 === void 0 || !isPoint(entry) || (read.stacks[id]?.blocks.length ?? 0) > 0 ? [] : [[pasted2, entry]];
   });
   const box = bounds([...positions, ...points2].map(([, at2]) => ({ x: at2.x, y: at2.y, w: 0, h: 0 })));
   if (box === void 0) return void 0;
@@ -1196,6 +1205,7 @@ var PASTE = "blockr.graph-paste_action";
 var LAYOUT = "blockr.graph-layout_action";
 var NOTHING_TO_PASTE = "The clipboard holds no board objects to paste.";
 var CLIPBOARD_UNREAD = "The browser did not let the page read the clipboard.";
+var told;
 var graphBoardActions = [
   {
     id: COPY2,
@@ -1232,23 +1242,28 @@ var graphBoardActions = [
     category: "clipboard",
     offers: (_board, _target, lock) => !lock.board,
     async run(_board, _target, core) {
-      const paste = notedPaste();
+      told?.();
+      told = void 0;
+      const tell = (severity, message, code) => {
+        told = core.notifications.notify(GRAPH, { severity, message, code, about: null });
+      };
+      const point = notedPoint();
       const text = await readClipboard(document);
       if (text === void 0) {
-        paste?.inform(CLIPBOARD_UNREAD);
+        tell("message", CLIPBOARD_UNREAD, "clipboard_unread");
         return void 0;
       }
       let read;
       try {
         read = await core.store.read(text);
       } catch (error) {
-        if (isJsonBoard(text)) paste?.refuse(error instanceof Error ? error.message : String(error));
-        else paste?.inform(NOTHING_TO_PASTE);
+        if (isJsonBoard(text)) tell("error", error instanceof Error ? error.message : String(error), "paste_refused");
+        else tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
         return void 0;
       }
-      const batch = pasteBatch(core.store.board(), read.board, paste?.point, (taken) => core.mintId(taken));
+      const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken));
       if (batch.length > 0) return batch;
-      if (!read.dropped.some((dropped) => "block" in dropped)) paste?.inform(NOTHING_TO_PASTE);
+      if (!read.dropped.some((dropped) => "block" in dropped)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
       return void 0;
     }
   },
@@ -1859,7 +1874,7 @@ function useGraphActions(parts) {
     []
   );
 }
-function graphActions({ core, element, toCanvas, refuse, inform, panel }) {
+function graphActions({ core, element, toCanvas, refuse, panel }) {
   const extendAt = (point) => (deltas) => {
     let after;
     try {
@@ -1872,23 +1887,12 @@ function graphActions({ core, element, toCanvas, refuse, inform, panel }) {
   const notifierAt = (client) => (notifications) => {
     refuse(client, notifications.map((notification) => notification.message).join("\n"));
   };
-  const notePasteAt = (point, client) => {
-    notePaste({
-      point,
-      inform: (message) => {
-        inform(client, message);
-      },
-      refuse: (message) => {
-        refuse(client, message);
-      }
-    });
-  };
   return {
     menu(target, client) {
       const el = element();
       if (el === null) return;
       const point = toCanvas(client);
-      notePasteAt(point, client);
+      notePoint(point);
       const advanced = panel(target);
       core.boardActions.menu(target, {
         el,
@@ -1904,16 +1908,15 @@ function graphActions({ core, element, toCanvas, refuse, inform, panel }) {
       if (el === null || frame === null) return;
       const middle = middleOf(frame);
       const at2 = "drop" in from ? from.drop : { client: middle, canvas: toCanvas(middle) };
-      const button = "button" in from ? from.button.getBoundingClientRect() : void 0;
-      const told = button === void 0 ? at2.client : { x: button.right, y: button.top };
-      notePasteAt(at2.canvas, told);
+      notePoint(at2.canvas);
       const advanced = panel(target);
+      const button = "button" in from ? from.button.getBoundingClientRect() : void 0;
       const anchor = "drop" in from ? new DOMRect(from.drop.client.x, from.drop.client.y, 0, 0) : "button" in from ? besideToolbar(from.button) : void 0;
       await core.boardActions.trigger(id, target, {
         el,
         ...anchor === void 0 ? {} : { anchor },
         ..."board" in target || "drop" in from ? { extend: extendAt(at2.canvas) } : {},
-        notifier: notifierAt(told),
+        ..."key" in from ? {} : { notifier: notifierAt(button === void 0 ? at2.client : { x: button.right, y: button.top }) },
         ...advanced === void 0 ? {} : { advanced }
       }).catch(() => void 0);
     }
@@ -2927,10 +2930,11 @@ var DEFAULT_VIEW = { x: 0, y: 0, zoom: 1 };
 
 // srcts/ui/keys.ts
 var OWN_KEYS = "input, textarea, select, [contenteditable]:not([contenteditable='false']), .blockr-graph-panel, .blockr-graph-search";
+function leavesKeys(target) {
+  return target instanceof Element && target.closest(OWN_KEYS) !== null || target instanceof HTMLElement && target.isContentEditable;
+}
 function keyAction(pressed, selection, text) {
-  const { target } = pressed;
-  if (target instanceof Element && target.closest(OWN_KEYS) !== null) return void 0;
-  if (target instanceof HTMLElement && target.isContentEditable) return void 0;
+  if (leavesKeys(pressed.target)) return void 0;
   const mod = pressed.metaKey || pressed.ctrlKey;
   if (pressed.altKey || pressed.shiftKey) return void 0;
   const chosen = selection.length === 0 ? void 0 : { selection };
@@ -2941,8 +2945,6 @@ function keyAction(pressed, selection, text) {
       return text || chosen === void 0 ? void 0 : { id: COPY2, target: chosen };
     case "x":
       return text || chosen === void 0 ? void 0 : { id: CUT, target: chosen };
-    case "v":
-      return { id: PASTE, target: { board: true } };
     default:
       return void 0;
   }
@@ -3190,6 +3192,24 @@ function holds(board, target) {
 }
 function sameTarget(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// srcts/ui/paste.ts
+function onPaste(el, paste) {
+  const doc = el.ownerDocument;
+  const ours = () => {
+    const focus = doc.activeElement;
+    return focus !== null && el.contains(focus) && !leavesKeys(focus);
+  };
+  const pasted2 = (event) => {
+    if (event.defaultPrevented || !ours()) return;
+    event.preventDefault();
+    paste(event.clipboardData?.getData("text/plain") ?? "");
+  };
+  doc.addEventListener("paste", pasted2);
+  return () => {
+    doc.removeEventListener("paste", pasted2);
+  };
 }
 
 // srcts/ui/search.tsx
@@ -3467,9 +3487,9 @@ function GraphFrame({ core, plugin }) {
   const stage = useRef6(null);
   const stageOf = useCallback4(() => stage.current, []);
   const [refusal, setRefusal] = useState4(null);
-  const tell = useCallback4((client, message, info) => {
+  const refuse = useCallback4((client, message) => {
     const box = element.current?.getBoundingClientRect();
-    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message, info });
+    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message });
   }, []);
   useEffect5(() => {
     if (refusal === null) return;
@@ -3492,14 +3512,18 @@ function GraphFrame({ core, plugin }) {
     core,
     element: elementOf,
     toCanvas: (client) => flow.screenToFlowPosition(client),
-    refuse: (client, message) => {
-      tell(client, message, false);
-    },
-    inform: (client, message) => {
-      tell(client, message, true);
-    },
+    refuse,
     panel: panel.advanced
   });
+  useEffect5(() => {
+    const el = element.current;
+    if (el === null) return;
+    return onPaste(el, (text) => {
+      notePasted(text);
+      void actions.trigger(PASTE, { board: true }, { key: true });
+      notePasted(void 0);
+    });
+  }, [actions]);
   const graph = useMemo5(
     () => ({
       core,
@@ -3598,15 +3622,7 @@ function GraphFrame({ core, plugin }) {
             searching ? /* @__PURE__ */ jsx8(SearchPanel, { onClose: closeSearch }) : null
           ] }),
           empty ? /* @__PURE__ */ jsx8("p", { className: "blockr-graph-empty", children: core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one." }) : null,
-          refusal === null ? null : /* @__PURE__ */ jsx8(
-            "div",
-            {
-              className: refusal.info === true ? "blockr-graph-refusal blockr-graph-refusal-info" : "blockr-graph-refusal",
-              role: refusal.info === true ? "status" : "alert",
-              style: { left: refusal.x, top: refusal.y },
-              children: refusal.message
-            }
-          )
+          refusal === null ? null : /* @__PURE__ */ jsx8("div", { className: "blockr-graph-refusal", role: "alert", style: { left: refusal.x, top: refusal.y }, children: refusal.message })
         ] }),
         panel.view
       ]

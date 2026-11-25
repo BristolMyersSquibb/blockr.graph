@@ -25,16 +25,19 @@
 //   board that it reads. The DAG raises no notification of it, as core is to
 //   raise one for what read() leaves out
 //   (https://github.com/BristolMyersSquibb/blockr.core/issues/878).
-// - Where Paste adds nothing, it tells the user why, where the UI noted that
-//   they pasted, rather than leave the board alone in silence, as today's
-//   paste does:
-//   - That the clipboard holds no board objects to paste, where the text is
-//     no JSON board, as an empty clipboard's is, or a board that holds
-//     nothing. A board whose blocks were all left out gets no such word,
-//     since core is to name what it left out.
-//   - That the browser did not let the page read the clipboard, where it
-//     refuses and the page has copied nothing either.
-//   - Why the store refused a JSON board, as a refusal.
+// - Where Paste adds nothing, it tells the user why, rather than leave the
+//   board alone in silence, as today's paste does. It raises a notification
+//   of the DAG about the board as a whole, which a frontend shows as a toast,
+//   since what it says concerns the clipboard, not a spot on the canvas:
+//   - That the clipboard holds no board objects to paste, as a message, where
+//     the text is no JSON board, as an empty clipboard's is, or a board that
+//     holds nothing. A board whose blocks were all left out gets no such
+//     message, since core is to name what it left out.
+//   - That the browser did not let the page read the clipboard, as a message,
+//     where it refuses and the page has copied nothing either.
+//   - Why the store refused a JSON board, as an error.
+//   Paste withdraws that notification as it runs again, so that a frontend
+//   shows the next one anew, as core raises a refusal anew.
 // - Layout's quick action lays the board out again and sets the placement of
 //   new blocks and snapping (./layout.ts).
 //
@@ -45,14 +48,14 @@
 // Copy and Cut fail their offers as well where the target names no block or
 // stack that the board holds, so that no menu offers them for a link alone.
 
-import type { BoardAction, CommandCall, CoreApi, Target } from "@blockr/core";
-import { defaultState, graphState } from "../state/index.ts";
+import type { BoardAction, CommandCall, CoreApi, Severity, Target } from "@blockr/core";
+import { defaultState, GRAPH, graphState } from "../state/index.ts";
 import { readClipboard, writeClipboard } from "./clipboard.ts";
 import { copiedBoard, copiedOf, copies } from "./copy.ts";
 import type { Copied } from "./copy.ts";
 import { COPY_ICON, CUT_ICON, LAYOUT_ICON, PASTE_ICON } from "./icons.ts";
 import { layoutLevel } from "./layout.ts";
-import { notedPaste } from "./noted.ts";
+import { notedPoint } from "./noted.ts";
 import { pasteBatch } from "./paste.ts";
 
 export const COPY = "blockr.graph-copy_action";
@@ -63,6 +66,9 @@ export const LAYOUT = "blockr.graph-layout_action";
 // What Paste tells the user where it adds nothing.
 export const NOTHING_TO_PASTE = "The clipboard holds no board objects to paste.";
 export const CLIPBOARD_UNREAD = "The browser did not let the page read the clipboard.";
+
+// What withdraws the notification that Paste raised as it last ran.
+let told: (() => void) | undefined;
 
 export const graphBoardActions: readonly BoardAction[] = [
   {
@@ -100,25 +106,30 @@ export const graphBoardActions: readonly BoardAction[] = [
     category: "clipboard",
     offers: (_board, _target, lock) => !lock.board,
     async run(_board, _target, core) {
-      // What the UI noted as the user pasted, before the run waits for the
-      // clipboard, during which the user may open another menu.
-      const paste = notedPaste();
+      told?.();
+      told = undefined;
+      const tell = (severity: Severity, message: string, code: string): void => {
+        told = core.notifications.notify(GRAPH, { severity, message, code, about: null });
+      };
+      // The point that the UI noted as the user pasted, before the run waits
+      // for the clipboard, during which the user may open another menu.
+      const point = notedPoint();
       const text = await readClipboard(document);
       if (text === undefined) {
-        paste?.inform(CLIPBOARD_UNREAD);
+        tell("message", CLIPBOARD_UNREAD, "clipboard_unread");
         return undefined;
       }
       let read: Awaited<ReturnType<CoreApi["store"]["read"]>>;
       try {
         read = await core.store.read(text);
       } catch (error) {
-        if (isJsonBoard(text)) paste?.refuse(error instanceof Error ? error.message : String(error));
-        else paste?.inform(NOTHING_TO_PASTE);
+        if (isJsonBoard(text)) tell("error", error instanceof Error ? error.message : String(error), "paste_refused");
+        else tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
         return undefined;
       }
-      const batch = pasteBatch(core.store.board(), read.board, paste?.point, (taken) => core.mintId(taken));
+      const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken));
       if (batch.length > 0) return batch;
-      if (!read.dropped.some((dropped) => "block" in dropped)) paste?.inform(NOTHING_TO_PASTE);
+      if (!read.dropped.some((dropped) => "block" in dropped)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
       return undefined;
     },
   },

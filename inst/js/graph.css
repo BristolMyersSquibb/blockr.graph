@@ -428,7 +428,3 @@
   white-space: pre-wrap;
   box-shadow: 0 2px 8px color-mix(in oklab, CanvasText 14%, transparent);
 }
-.blockr-graph-refusal-info {
-  border-color: var(--blockr-graph-border);
-  color: var(--blockr-graph-text);
-}

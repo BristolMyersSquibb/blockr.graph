@@ -1,7 +1,7 @@
 // The DAG's keys (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#keys).
 
 import { afterEach, describe, expect, test } from "vitest";
-import { COPY, CUT, PASTE } from "../actions/index.ts";
+import { COPY, CUT } from "../actions/index.ts";
 import { keyAction } from "./keys.ts";
 import type { Pressed } from "./keys.ts";
 
@@ -21,10 +21,14 @@ describe("a key in the DAG", () => {
     expect(keyAction(pressed("Backspace"), [], false)).toBeUndefined();
   });
 
-  test("Cmd or Ctrl with C, X and V triggers Copy, Cut and Paste", () => {
+  test("Cmd or Ctrl with C and X triggers Copy and Cut", () => {
     expect(keyAction(pressed("c", { metaKey: true }), selection, false)).toEqual({ id: COPY, target: { selection } });
     expect(keyAction(pressed("x", { ctrlKey: true }), selection, false)).toEqual({ id: CUT, target: { selection } });
-    expect(keyAction(pressed("v", { ctrlKey: true }), [], false)).toEqual({ id: PASTE, target: { board: true } });
+  });
+
+  test("Cmd or Ctrl with V triggers nothing, so that the browser runs its own paste", () => {
+    expect(keyAction(pressed("v", { ctrlKey: true }), [], false)).toBeUndefined();
+    expect(keyAction(pressed("v", { metaKey: true }), selection, false)).toBeUndefined();
   });
 
   test("C and X copy nothing while the user has selected text or nothing", () => {
@@ -47,7 +51,7 @@ describe("a key in the DAG", () => {
     panel.append(button);
     document.body.append(field, panel);
     expect(keyAction(pressed("Backspace", {}, field), selection, false)).toBeUndefined();
-    expect(keyAction(pressed("v", { metaKey: true }, field), selection, false)).toBeUndefined();
+    expect(keyAction(pressed("c", { metaKey: true }, field), selection, false)).toBeUndefined();
     expect(keyAction(pressed("Backspace", {}, button), selection, false)).toBeUndefined();
   });
 });

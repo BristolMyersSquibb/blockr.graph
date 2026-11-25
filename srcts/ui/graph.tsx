@@ -26,14 +26,18 @@
 //   another panel of the dock, and Safari would leave it drawn on the page.
 // - The DAG shows why the board took no link that the user dropped, and a
 //   batch that the store or the command registry refused, where the user
-//   dropped the link, opened the menu or triggered the board action, until
-//   the user presses on the DAG or a moment has passed. It shows why Paste
-//   added nothing there as well, as information where nothing refused it.
+//   dropped the link, opened the menu or pressed the toolbar's button, until
+//   the user presses on the DAG or a moment has passed. A key has no point of
+//   its own, so core raises the refusal of a key's batch instead, which a
+//   frontend shows as a toast.
+// - Cmd or Ctrl with V pastes what the browser's paste hands the page
+//   (./paste.ts).
 
 import type { CoreApi, LinkId, PluginClassId } from "@blockr/core";
 import { useBoard } from "@blockr/core/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { notePasted, PASTE } from "../actions/index.ts";
 import { ReactFlowProvider, useReactFlow } from "../flow/index.ts";
 import type { Point } from "../state/index.ts";
 import { useGraphActions } from "./actions.ts";
@@ -44,6 +48,7 @@ import type { Entered, Graph } from "./context.ts";
 import type { Side } from "./elements.ts";
 import { keyAction } from "./keys.ts";
 import { usePanel } from "./panel.tsx";
+import { onPaste } from "./paste.ts";
 import { SearchPanel } from "./search.tsx";
 import { Controls } from "./toolbar.tsx";
 import { DURATION } from "./view.ts";
@@ -100,9 +105,9 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
   const stage = useRef<HTMLDivElement>(null);
   const stageOf = useCallback(() => stage.current, []);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
-  const tell = useCallback((client: Point, message: string, info: boolean) => {
+  const refuse = useCallback((client: Point, message: string) => {
     const box = element.current?.getBoundingClientRect();
-    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message, info });
+    setRefusal({ x: client.x - (box?.left ?? 0), y: client.y - (box?.top ?? 0), message });
   }, []);
   useEffect(() => {
     if (refusal === null) return;
@@ -126,14 +131,20 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
     core,
     element: elementOf,
     toCanvas: (client) => flow.screenToFlowPosition(client),
-    refuse: (client, message) => {
-      tell(client, message, false);
-    },
-    inform: (client, message) => {
-      tell(client, message, true);
-    },
+    refuse,
     panel: panel.advanced,
   });
+  // The text of the browser's paste goes to Paste's run, which takes it as
+  // core calls the run, at once.
+  useEffect(() => {
+    const el = element.current;
+    if (el === null) return;
+    return onPaste(el, (text) => {
+      notePasted(text);
+      void actions.trigger(PASTE, { board: true }, { key: true });
+      notePasted(undefined);
+    });
+  }, [actions]);
 
   const graph = useMemo<Graph>(
     () => ({
@@ -236,11 +247,7 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
             <p className="blockr-graph-empty">{core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one."}</p>
           ) : null}
           {refusal === null ? null : (
-            <div
-              className={refusal.info === true ? "blockr-graph-refusal blockr-graph-refusal-info" : "blockr-graph-refusal"}
-              role={refusal.info === true ? "status" : "alert"}
-              style={{ left: refusal.x, top: refusal.y }}
-            >
+            <div className="blockr-graph-refusal" role="alert" style={{ left: refusal.x, top: refusal.y }}>
               {refusal.message}
             </div>
           )}

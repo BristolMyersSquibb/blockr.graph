@@ -21,19 +21,20 @@
 // - For the canvas, the toolbar's board actions on the board and a dropped
 //   link, an `extend` that starts what the board action adds at a point: where
 //   the user right-clicked, the middle of the view, or the drop (./added.ts).
-// - A `notifier`, so that the DAG shows a refused batch where it opened the
-//   menu or triggered the board action, and core raises none.
+// - A `notifier`, so that the DAG shows a refused batch where the user
+//   right-clicked, pressed the button or dropped the link, and core raises
+//   none. A key gives none, since it has no point of its own: core then
+//   raises the refusal, which a frontend shows as a toast.
 // - The panel of advanced actions as `advanced`, where the panel has room
 //   beside the object of the target (./panel.tsx).
 //
-// Before each call, the DAG notes where the user pastes, for Paste's run: the
-// point on the canvas where the menu opens, or the middle of its view for a
-// button or a key, and how to tell the user why Paste adds nothing, where the
-// DAG shows a refused batch (../actions).
+// Before each call, the DAG notes the point where the user pastes, for
+// Paste's run: where the menu opens, or the middle of its view for a button or
+// a key (../actions).
 
 import type { CoreApi, Notification, Target } from "@blockr/core";
 import { useEffect, useMemo, useRef } from "react";
-import { notePaste } from "../actions/index.ts";
+import { notePoint } from "../actions/index.ts";
 import type { Point } from "../state/index.ts";
 import { startAt } from "./added.ts";
 import type { Panel } from "./panel.tsx";
@@ -63,9 +64,6 @@ export interface ActionParts {
   readonly toCanvas: (client: Point) => Point;
   // Shows why the board took nothing, at a point on the screen.
   readonly refuse: (client: Point, message: string) => void;
-  // Shows a message at a point on the screen as information, such as that
-  // the clipboard holds nothing to paste.
-  readonly inform: (client: Point, message: string) => void;
   readonly panel: Panel["advanced"];
 }
 
@@ -87,7 +85,7 @@ export function useGraphActions(parts: ActionParts): GraphActions {
   );
 }
 
-export function graphActions({ core, element, toCanvas, refuse, inform, panel }: ActionParts): GraphActions {
+export function graphActions({ core, element, toCanvas, refuse, panel }: ActionParts): GraphActions {
   // What starts what the batch adds at the point, through `extend`.
   const extendAt = (point: Point) => (deltas: Parameters<typeof startAt>[1]) => {
     let after;
@@ -102,26 +100,13 @@ export function graphActions({ core, element, toCanvas, refuse, inform, panel }:
   const notifierAt = (client: Point) => (notifications: readonly Notification[]) => {
     refuse(client, notifications.map((notification) => notification.message).join("\n"));
   };
-  // Notes the point on the canvas where the user pastes, and the point on the
-  // screen where the DAG tells them why Paste adds nothing.
-  const notePasteAt = (point: Point, client: Point) => {
-    notePaste({
-      point,
-      inform: (message) => {
-        inform(client, message);
-      },
-      refuse: (message) => {
-        refuse(client, message);
-      },
-    });
-  };
 
   return {
     menu(target, client) {
       const el = element();
       if (el === null) return;
       const point = toCanvas(client);
-      notePasteAt(point, client);
+      notePoint(point);
       const advanced = panel(target);
       core.boardActions.menu(target, {
         el,
@@ -137,19 +122,16 @@ export function graphActions({ core, element, toCanvas, refuse, inform, panel }:
       if (el === null || frame === null) return;
       const middle = middleOf(frame);
       const at = "drop" in from ? from.drop : { client: middle, canvas: toCanvas(middle) };
-      const button = "button" in from ? from.button.getBoundingClientRect() : undefined;
-      // Where the DAG tells the user why the board action changed nothing:
-      // beside the button, at the drop, or at the middle of the view for a key.
-      const told = button === undefined ? at.client : { x: button.right, y: button.top };
-      notePasteAt(at.canvas, told);
+      notePoint(at.canvas);
       const advanced = panel(target);
+      const button = "button" in from ? from.button.getBoundingClientRect() : undefined;
       const anchor = "drop" in from ? new DOMRect(from.drop.client.x, from.drop.client.y, 0, 0) : "button" in from ? besideToolbar(from.button) : undefined;
       await core.boardActions
         .trigger(id, target, {
           el,
           ...(anchor === undefined ? {} : { anchor }),
           ...("board" in target || "drop" in from ? { extend: extendAt(at.canvas) } : {}),
-          notifier: notifierAt(told),
+          ...("key" in from ? {} : { notifier: notifierAt(button === undefined ? at.client : { x: button.right, y: button.top }) }),
           ...(advanced === undefined ? {} : { advanced }),
         })
         .catch(() => undefined);

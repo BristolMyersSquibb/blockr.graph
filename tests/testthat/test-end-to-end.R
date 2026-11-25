@@ -280,70 +280,56 @@ test_that("Ctrl+C and Ctrl+V paste the block near the middle, on nothing", {
   expect_length(met, 0L)
 })
 
-test_that("Ctrl+V with nothing to paste says why, at the middle of the view", {
+test_that("a paste with nothing to paste says why in a toast", {
 
   app <- local_example_app("stacks")
   wait_for_dag(app)
 
-  # Chrome's permissions of the clipboard, for every origin, until the test
-  # ends.
+  # Chrome refuses the page a read of the clipboard, for every origin, until
+  # the test ends.
   page <- app$get_chromote_session()
-  permit <- function(name, setting) {
-    page$parent$Browser$setPermission(
-      permission = list(name = name),
-      setting = setting
-    )
-  }
+  page$parent$Browser$setPermission(
+    permission = list(name = "clipboard-read"),
+    setting = "denied"
+  )
   withr::defer(page$parent$Browser$resetPermissions())
 
-  # Pastes with Ctrl+V on a block, and returns what the DAG tells.
-  told <- function() {
-    click_at(app, center_of(app, mark_js("bod")))
-    app$wait_for_js("document.querySelector('.blockr-graph-refusal') === null")
-    press_key(app, "v", "KeyV", 86L, CTRL)
-    app$wait_for_js("document.querySelector('.blockr-graph-refusal') !== null")
-    app$get_js(
-      "(() => {
-        const told = document.querySelector('.blockr-graph-refusal');
-        return { text: told.textContent, role: told.getAttribute('role') };
-      })()"
+  # Waits for a toast of core's basic frontend with the message, and returns
+  # whether the DAG showed a message of its own on the canvas.
+  toast <- function(message) {
+    app$wait_for_js(
+      sprintf("document.body.innerText.includes('%s')", message)
     )
+    app$get_js("document.querySelector('.blockr-graph-refusal') !== null")
   }
 
   before <- app_blocks(app)
 
-  # The browser refuses to read the clipboard, and the page has copied
-  # nothing.
-  permit("clipboard-read", "denied")
-  expect_identical(
-    told(),
-    list(
-      text = "The browser did not let the page read the clipboard.",
-      role = "status"
+  # The toolbar's Paste reads the clipboard of its own accord, which Chrome
+  # refuses, and the page has copied nothing.
+  click_at(
+    app,
+    center_of(
+      app,
+      "document.querySelector('.blockr-graph-toolbar [aria-label=\"Paste\"]')"
     )
   )
+  expect_false(toast("The browser did not let the page read the clipboard."))
 
-  # The message shows at the middle of the view.
-  dag <- box_of(app, "document.querySelector('.blockr-graph')")
-  at <- box_of(app, "document.querySelector('.blockr-graph-refusal')")
-  expect_lte(abs(at[["x"]] - (dag[["x"]] + dag[["width"]] / 2 + 8)), 2)
-  expect_lte(abs(at[["y"]] - (dag[["y"]] + dag[["height"]] / 2 + 8)), 2)
-
-  # The clipboard is empty.
-  permit("clipboard-read", "granted")
-  permit("clipboard-write", "granted")
+  # Ctrl+V pastes what the browser's own paste hands the page, for which
+  # Chrome asks no permission: here, an empty clipboard.
+  page$parent$Browser$setPermission(
+    permission = list(name = "clipboard-write"),
+    setting = "granted"
+  )
   page$Runtime$evaluate(
     "navigator.clipboard.writeText('')",
     awaitPromise = TRUE,
     userGesture = TRUE
   )
-  expect_identical(
-    told(),
-    list(
-      text = "The clipboard holds no board objects to paste.",
-      role = "status"
-    )
-  )
+  click_at(app, center_of(app, mark_js("bod")))
+  press_key(app, "v", "KeyV", 86L, CTRL)
+  expect_false(toast("The clipboard holds no board objects to paste."))
 
   expect_identical(app_blocks(app), before)
 })

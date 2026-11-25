@@ -573,7 +573,7 @@ describe("a right click", () => {
     expect([refusal?.style.left, refusal?.style.top]).toEqual(["300px", "200px"]);
   });
 
-  test("shows where the user pasted, as information, that the clipboard holds no board objects to paste", async () => {
+  test("tells the user that the clipboard holds no board objects to paste through a notification about the board, which a frontend shows as a toast", async () => {
     const { el, core, stub } = await mounted();
     await navigator.clipboard.writeText("");
     await rightClick(pane(el), { x: 300, y: 200 });
@@ -581,13 +581,13 @@ describe("a right click", () => {
       await stub.menu()?.pick("Paste");
     });
     await vi.waitFor(() => {
-      expect(el.querySelector(".blockr-graph-refusal")).not.toBeNull();
+      expect(core.notifications.get().map(({ severity, message, about }) => ({ severity, message, about }))).toContainEqual({
+        severity: "message",
+        message: "The clipboard holds no board objects to paste.",
+        about: undefined,
+      });
     });
-    const told = el.querySelector<HTMLElement>(".blockr-graph-refusal");
-    expect(told?.textContent).toBe("The clipboard holds no board objects to paste.");
-    expect(told?.classList.contains("blockr-graph-refusal-info")).toBe(true);
-    expect(told?.getAttribute("role")).toBe("status");
-    expect([told?.style.left, told?.style.top]).toEqual(["300px", "200px"]);
+    expect(el.querySelector(".blockr-graph-refusal")).toBeNull();
     expect(core.store.canUndo()).toBe(false);
   });
 });
@@ -687,17 +687,47 @@ describe("the keys", () => {
     });
   });
 
-  test("copy the selection with Cmd or Ctrl and C, and paste it with V", async () => {
+  test("copy the selection with Cmd or Ctrl and C, and paste it with V through the browser's paste, without reading the clipboard", async () => {
     const { el, core } = await mounted();
     act(() => {
       core.selection.set([{ block: "f" }]);
     });
     await keyDown(frameOf(el), { key: "c", metaKey: true });
-    expect(Object.keys((JSON.parse(await navigator.clipboard.readText()) as JsonBoard).board.blocks)).toEqual(["f"]);
-    await keyDown(frameOf(el), { key: "v", ctrlKey: true });
+    const copied = await navigator.clipboard.readText();
+    expect(Object.keys((JSON.parse(copied) as JsonBoard).board.blocks)).toEqual(["f"]);
+    // The DAG leaves V to the browser, whose paste hands the page the
+    // clipboard, so that the DAG reads none, for which the browser would ask
+    // the user.
+    const read = vi.spyOn(navigator.clipboard, "readText");
+    const v = new KeyboardEvent("keydown", { key: "v", ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      frameOf(el).dispatchEvent(v);
+    });
+    expect(v.defaultPrevented).toBe(false);
+    frameOf(el).focus();
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", copied);
+    await act(async () => {
+      document.body.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData }));
+      await Promise.resolve();
+    });
     await vi.waitFor(() => {
       expect(names(core).filter((name) => name === "Scatter")).toHaveLength(2);
     });
+    expect(read).not.toHaveBeenCalled();
+    read.mockRestore();
+  });
+
+  test("give core no notifier, so that core raises the refusal of a key's batch, which a frontend shows as a toast", async () => {
+    const { el, core } = await mounted();
+    const trigger = vi.spyOn(core.boardActions, "trigger");
+    act(() => {
+      core.selection.set([{ block: "f" }]);
+    });
+    await keyDown(frameOf(el), { key: "Backspace" });
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(trigger.mock.calls[0]?.[2]).not.toHaveProperty("notifier");
+    trigger.mockRestore();
   });
 });
 
