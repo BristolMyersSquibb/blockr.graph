@@ -1,25 +1,24 @@
-// The DAG's panel of advanced actions, which it draws on its canvas, beside the
-// node, the link, the stack, the toolbar or the selection's box that the
-// advanced action is about, as the `advanced` of the DAG's calls of
+// The DAG's panel of advanced actions, which it docks at the bottom of its
+// element, below the canvas, as the `advanced` of the DAG's calls of
 // core.boardActions.menu() and trigger()
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#its-advanced-actions).
 //
 // 1. The user opens Edit link on a link, through the link's menu and the open
 //    icon of its quick action.
 // 2. Core calls the DAG's `advanced`.
-// 3. The DAG draws its panel beside the link, panning the canvas where it
-//    must (./panel-place.ts), and has core mount the form there.
+// 3. The DAG docks its panel below the canvas, which shrinks to what the panel
+//    leaves above it, pans the canvas where the link would lie below it
+//    (./panel-place.ts), and has core mount the form in the panel.
 // 4. Once done() ends the advanced action, the DAG closes the panel.
 //
-// An advanced action on the board, such as the block picker of Add block,
-// shows beside the toolbar, and one on a selection, such as the form of Create
-// stack, beside the box around the selected nodes.
+// An advanced action on the board, such as the block picker of Add block, and
+// one on a selection, such as the form of Create stack, show there too.
 // The DAG hands every call the same `advanced`, so that the panel shows one
 // advanced action at a time: core ends the one that it showed as it opens
 // another there.
-// Where the element has no room for the panel beside the object, the DAG
-// hands that call no `advanced`, and the frontend shows the advanced action in
-// its own place.
+// Where the element has no room for the panel below the canvas, the DAG hands
+// that call no `advanced`, and the frontend shows the advanced action in its
+// own place.
 //
 // The user may pin the panel. A pinned panel stays open once done() ends its
 // advanced action, and has core mount it again, by the rules of the dock's
@@ -35,18 +34,22 @@
 //    so that a pinned Edit inputs follows the blocks that the user selects.
 // 3. Otherwise a selection changes nothing.
 //
+// The panel takes the keyboard's focus as it opens, though not as a pinned
+// panel mounts its advanced action again, and gives the focus back to the
+// DAG's element as it closes with the focus in it.
 // The panel closes as the user closes it, by its button or Escape, and as its
-// advanced action ends while the panel is not pinned. A pinned panel closes
-// as well once what its advanced action is about leaves the board.
+// advanced action ends while the panel is not pinned. Escape on the canvas
+// closes it as well, unless it is pinned. A pinned panel closes as well once
+// what its advanced action is about leaves the board.
 
 import type { BlockId, Board, BoardObject, CoreApi, Delta, FrontendModule, Target } from "@blockr/core";
 import { Button, ToggleButton } from "@blockr/core/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement } from "react";
+import type { ReactElement, RefObject } from "react";
 import { stackOf } from "../geometry/index.ts";
 import { idOf, stackNode } from "./ids.ts";
-import { hasRoom, PANEL_WIDTH, panelPlace } from "./panel-place.ts";
-import type { PanelPlace, Rect } from "./panel-place.ts";
+import { hasRoom, revealPan } from "./panel-place.ts";
+import type { Rect } from "./panel-place.ts";
 
 // What core hands a place of advanced actions, and what the place returns.
 type Place = NonNullable<FrontendModule["advanced"]>;
@@ -54,43 +57,54 @@ type PlaceArgs = Parameters<Place>[0];
 
 // The advanced action that the panel shows: what core handed the panel, the
 // target that the panel mounts it on now, how many mounts the panel has made
-// since it opened, so that each mount takes an element of its own, and where
-// the panel sits.
+// since it opened, so that each mount takes an element of its own, and
+// whether the panel takes the focus as it shows the mount, as it does as it
+// opens.
 interface Shown {
   readonly args: PlaceArgs;
   readonly target: Target;
   readonly mounts: number;
-  readonly place: PanelPlace;
+  readonly focus: boolean;
 }
 
 export interface PanelParts {
   readonly core: CoreApi;
-  // The DAG's element, on which the panel sits.
+  // The DAG's element, at whose bottom the panel docks.
   readonly element: () => HTMLElement | null;
+  // The element of the canvas, above the panel.
+  readonly stage: () => HTMLElement | null;
   // Pans the canvas by the distance given, on the screen.
   readonly pan: (by: { readonly x: number; readonly y: number }) => void;
 }
 
 export interface Panel {
   // The `advanced` of a call of menu() or trigger() on the target, or
-  // undefined where the element has no room for the panel beside the target's
-  // object.
+  // undefined where the element has no room for the panel below the canvas,
+  // or the DAG draws nothing of the target.
   readonly advanced: (target: Target) => Place | undefined;
+  // Closes the panel unless it is pinned, as Escape on the canvas does, and
+  // says whether it closed it.
+  readonly dismiss: () => boolean;
   // The panel, while it shows an advanced action.
   readonly view: ReactElement | null;
 }
 
-export function usePanel({ core, element, pan }: PanelParts): Panel {
+export function usePanel({ core, element, stage, pan }: PanelParts): Panel {
   const [shown, setShown] = useState<Shown | null>(null);
   const shownRef = useRef<Shown | null>(null);
   const [pinned, setPinned] = useState(false);
   const pinnedRef = useRef(false);
-  const parts = useRef({ core, element, pan });
+  const section = useRef<HTMLElement>(null);
+  const parts = useRef({ core, element, stage, pan });
   useEffect(() => {
-    parts.current = { core, element, pan };
-  }, [core, element, pan]);
+    parts.current = { core, element, stage, pan };
+  }, [core, element, stage, pan]);
 
   const show = useCallback((next: Shown | null) => {
+    const held = section.current;
+    if (next === null && held?.contains(held.ownerDocument.activeElement) === true) {
+      parts.current.element()?.focus({ preventScroll: true });
+    }
     shownRef.current = next;
     setShown(next);
     if (next === null) {
@@ -99,34 +113,33 @@ export function usePanel({ core, element, pan }: PanelParts): Panel {
     }
   }, []);
 
-  // Where the panel goes beside the target's object, panning the canvas where
-  // it must, or at the element's right edge where the element has no room
-  // beside it, as where the element shrank since the menu opened.
-  const placeOf = useCallback((target: Target): PanelPlace => {
-    const el = parts.current.element();
-    const frame = el?.getBoundingClientRect();
-    const box = el === null ? undefined : objectBox(el, parts.current.core.store.board(), target);
-    const placed = frame === undefined || box === undefined ? undefined : panelPlace(box, frame);
-    if (placed === undefined) {
-      const height = frame?.height ?? 0;
-      return { left: Math.max(0, (frame?.width ?? 0) - PANEL_WIDTH), top: 0, height, pan: { x: 0, y: 0 } };
-    }
-    if (!("board" in target) && (placed.pan.x !== 0 || placed.pan.y !== 0)) parts.current.pan(placed.pan);
-    return placed;
+  // Pans the canvas so that the object of the target that the panel shows
+  // lies within the canvas above the panel.
+  const reveal = useCallback(() => {
+    const current = shownRef.current;
+    const { core: api, element: frameOf, stage: stageOf, pan: by } = parts.current;
+    const [frame, canvas] = [frameOf(), stageOf()];
+    if (current === null || frame === null || canvas === null || "board" in current.target) return;
+    const box = objectBox(frame, api.store.board(), current.target);
+    const y = box === undefined ? 0 : revealPan(box, canvas.getBoundingClientRect().height);
+    if (y !== 0) by({ x: 0, y });
   }, []);
+  useLayoutEffect(() => {
+    if (shown !== null) reveal();
+  }, [shown, reveal]);
 
-  // Mounts the advanced action afresh on the target, beside its object.
+  // Mounts the advanced action afresh on the target.
   const mountOn = useCallback(
     (current: Shown, target: Target) => {
-      show({ ...current, target, mounts: current.mounts + 1, place: sameTarget(target, current.target) ? current.place : placeOf(target) });
+      show({ ...current, target, mounts: current.mounts + 1, focus: false });
     },
-    [placeOf, show],
+    [show],
   );
 
   // The place that the DAG hands core, the same function for every call.
   const place = useMemo<Place>(
     () => (args) => {
-      show({ args, target: args.target, mounts: (shownRef.current?.mounts ?? 0) + 1, place: placeOf(args.target) });
+      show({ args, target: args.target, mounts: (shownRef.current?.mounts ?? 0) + 1, focus: true });
       return (deltas?: readonly Delta[]) => {
         const current = shownRef.current;
         if (current?.args !== args) return;
@@ -140,7 +153,7 @@ export function usePanel({ core, element, pan }: PanelParts): Panel {
         else mountOn(current, next);
       };
     },
-    [mountOn, placeOf, show],
+    [mountOn, show],
   );
 
   const close = useCallback(() => {
@@ -149,6 +162,12 @@ export function usePanel({ core, element, pan }: PanelParts): Panel {
     current.args.close();
     show(null);
   }, [show]);
+
+  const dismiss = useCallback(() => {
+    if (shownRef.current === null || pinnedRef.current) return false;
+    close();
+    return true;
+  }, [close]);
 
   // A pinned panel follows the selection to one board object for which a
   // menu offers its board action.
@@ -168,7 +187,7 @@ export function usePanel({ core, element, pan }: PanelParts): Panel {
     (target: Target): Place | undefined => {
       const el = element();
       const box = el === null ? undefined : objectBox(el, core.store.board(), target);
-      return el !== null && box !== undefined && hasRoom(box, el.getBoundingClientRect()) ? place : undefined;
+      return el !== null && box !== undefined && hasRoom(el.getBoundingClientRect()) ? place : undefined;
     },
     [core, element, place],
   );
@@ -176,6 +195,7 @@ export function usePanel({ core, element, pan }: PanelParts): Panel {
   const view =
     shown === null ? null : (
       <PanelView
+        section={section}
         shown={shown}
         pinned={pinned}
         onPin={(next) => {
@@ -183,28 +203,59 @@ export function usePanel({ core, element, pan }: PanelParts): Panel {
           setPinned(next);
         }}
         onClose={close}
+        onResize={reveal}
       />
     );
-  return { advanced, view };
+  return { advanced, dismiss, view };
 }
 
 function PanelView({
+  section,
   shown,
   pinned,
   onPin,
   onClose,
+  onResize,
 }: {
+  section: RefObject<HTMLElement | null>;
   shown: Shown;
   pinned: boolean;
   onPin: (pinned: boolean) => void;
   onClose: () => void;
+  // Called as the panel's height changes, as where the advanced action draws
+  // more, which the canvas above it loses.
+  onResize: () => void;
 }): ReactElement {
-  const { args, target, mounts, place } = shown;
+  const { args, target, mounts, focus } = shown;
+  useLayoutEffect(() => {
+    const el = section.current;
+    if (el === null) return;
+    const observer = new ResizeObserver(() => {
+      onResize();
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, [section, onResize]);
+  // The panel takes the focus once core has given it back to where the user
+  // opened the menu from, as the menu closed.
+  useEffect(() => {
+    const el = section.current;
+    if (!focus || el === null) return;
+    const frame = requestAnimationFrame(() => {
+      if (!el.contains(el.ownerDocument.activeElement)) el.focus({ preventScroll: true });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [section, focus, mounts]);
   return (
     <section
+      ref={section}
       className="blockr-graph-panel"
       aria-label={args.title}
-      style={{ left: place.left, top: place.top, width: PANEL_WIDTH, maxHeight: place.height }}
+      tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;
         event.preventDefault();

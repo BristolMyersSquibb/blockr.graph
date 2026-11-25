@@ -4,11 +4,13 @@
 // that the frontend gives the DAG's module
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#the-canvas).
 //
-// - The canvas fills the element and sizes itself from it. Where the element
-//   has no height of its own, as a plugin's section under core's basic
-//   frontend has none, the canvas takes half the window's height, since
-//   React Flow needs an element with a height to draw in. The DAG decides
-//   this once, as its element first shows.
+// - The canvas fills the element and sizes itself from it, but for the panel
+//   of advanced actions, which docks below it while it shows one, and takes
+//   its height from the canvas (./panel.tsx). Where the element has no height
+//   of its own, as a plugin's section under core's basic frontend has none,
+//   the DAG's element takes half the window's height, since React Flow needs
+//   an element with a height to draw in. The DAG decides this once, as its
+//   element first shows.
 // - The canvas draws again from the start as another board opens, since the
 //   zoom and the pan belong to a board.
 // - While the board holds no block, the canvas says so, and how to add one,
@@ -18,6 +20,10 @@
 //   around the nodes, so that the DAG's keys act after a click on the canvas
 //   or a drawn rectangle, as after a click on a node. The keys act on the
 //   DAG's element alone (./keys.ts).
+// - A drag that starts on the canvas selects no text on the page until the
+//   pointer goes up, wherever it goes. WebKit would otherwise start a
+//   selection as the user draws a rectangle with Shift, or drags a link onto
+//   another panel of the dock, and Safari would leave it drawn on the page.
 // - The DAG shows why the board took no link that the user dropped, and a
 //   batch that the store or the command registry refused, where the user
 //   dropped the link, opened the menu or triggered the board action, until
@@ -50,6 +56,22 @@ const REFUSAL = 8000;
 // folding back between them.
 const FOLD = 250;
 
+// Keeps the page from starting a selection of text until the pointer that
+// went down goes up.
+function noSelection(doc: Document): void {
+  const refuse = (event: Event) => {
+    event.preventDefault();
+  };
+  const end = () => {
+    doc.removeEventListener("selectstart", refuse, true);
+    doc.removeEventListener("pointerup", end, true);
+    doc.removeEventListener("pointercancel", end, true);
+  };
+  doc.addEventListener("selectstart", refuse, true);
+  doc.addEventListener("pointerup", end, true);
+  doc.addEventListener("pointercancel", end, true);
+}
+
 export function GraphRoot({ core, plugin }: { core: CoreApi; plugin: PluginClassId }): ReactElement {
   return (
     <ReactFlowProvider>
@@ -72,6 +94,10 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
 
   const element = useRef<HTMLDivElement>(null);
   const elementOf = useCallback(() => element.current, []);
+  // The element of the canvas and the toolbar, above the panel of advanced
+  // actions.
+  const stage = useRef<HTMLDivElement>(null);
+  const stageOf = useCallback(() => stage.current, []);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const refuse = useCallback((client: Point, message: string) => {
     const box = element.current?.getBoundingClientRect();
@@ -94,7 +120,7 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
     },
     [flow],
   );
-  const panel = usePanel({ core, element: elementOf, pan });
+  const panel = usePanel({ core, element: elementOf, stage: stageOf, pan });
   const actions = useGraphActions({
     core,
     element: elementOf,
@@ -129,23 +155,24 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
   const [own, setOwn] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
-    const el = element.current;
-    if (el === null) return;
+    const [el, canvas] = [element.current, stage.current];
+    if (el === null || canvas === null) return;
     let decided = false;
     const measure = () => {
       if (el.getClientRects().length === 0) return;
-      const { width, height } = el.getBoundingClientRect();
       if (!decided) {
         decided = true;
-        if (height === 0) {
+        if (el.getBoundingClientRect().height === 0) {
           setOwn(true);
           return;
         }
       }
+      const { width, height } = canvas.getBoundingClientRect();
       setSize((was) => (was.width === width && was.height === height ? was : { width, height }));
     };
     const observer = new ResizeObserver(measure);
     observer.observe(el);
+    observer.observe(canvas);
     measure();
     return () => {
       observer.disconnect();
@@ -168,12 +195,18 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
           setRefusal(null);
           const el = element.current;
           const target = event.target;
-          if (el === null || !(target instanceof Element) || target.closest(".react-flow__pane") === null) return;
+          if (el === null || !(target instanceof Element)) return;
+          if (target.closest(".react-flow") !== null) noSelection(el.ownerDocument);
+          if (target.closest(".react-flow__pane") === null) return;
           const node = target.closest<HTMLElement>(".react-flow__node");
           (node ?? el).focus({ preventScroll: true });
         }}
         onKeyDown={(event) => {
           if (event.defaultPrevented) return;
+          if (event.key === "Escape" && panel.dismiss()) {
+            event.preventDefault();
+            return;
+          }
           const text = event.currentTarget.ownerDocument.getSelection()?.toString() ?? "";
           const action = keyAction(event, core.selection.get(), text !== "");
           if (action === undefined) return;
@@ -181,26 +214,28 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
           void actions.trigger(action.id, action.target, { key: true });
         }}
       >
-        <Canvas key={board.id} hovered={hovered} spread={spread} size={size} onRefusal={setRefusal} />
-        <div className="blockr-graph-tools">
-          <Controls
-            size={size}
-            searching={searching}
-            onSearch={() => {
-              setSearching((open) => !open);
-            }}
-          />
-          {searching ? <SearchPanel onClose={closeSearch} /> : null}
-        </div>
-        {empty ? (
-          <p className="blockr-graph-empty">{core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one."}</p>
-        ) : null}
-        {panel.view}
-        {refusal === null ? null : (
-          <div className="blockr-graph-refusal" role="alert" style={{ left: refusal.x, top: refusal.y }}>
-            {refusal.message}
+        <div ref={stage} className="blockr-graph-stage">
+          <Canvas key={board.id} hovered={hovered} spread={spread} size={size} onRefusal={setRefusal} />
+          <div className="blockr-graph-tools">
+            <Controls
+              size={size}
+              searching={searching}
+              onSearch={() => {
+                setSearching((open) => !open);
+              }}
+            />
+            {searching ? <SearchPanel onClose={closeSearch} /> : null}
           </div>
-        )}
+          {empty ? (
+            <p className="blockr-graph-empty">{core.lock.board ? "No blocks yet." : "No blocks yet. Right-click to add one."}</p>
+          ) : null}
+          {refusal === null ? null : (
+            <div className="blockr-graph-refusal" role="alert" style={{ left: refusal.x, top: refusal.y }}>
+              {refusal.message}
+            </div>
+          )}
+        </div>
+        {panel.view}
       </div>
     </GraphContext>
   );

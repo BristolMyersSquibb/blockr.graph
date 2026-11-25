@@ -14,6 +14,10 @@
 //
 // - The DAG's element, or the toolbar's button, as the element that the user
 //   triggered from, to which the keyboard's focus returns as a menu closes.
+// - Where the menu opens: at the pointer for a right click and a dropped
+//   link, and to the right of the toolbar for its buttons, level with the
+//   button, as the panel of search opens to the right of the toolbar's first
+//   button.
 // - For the canvas, the toolbar's board actions on the board and a dropped
 //   link, an `extend` that starts what the board action adds at a point: where
 //   the user right-clicked, the middle of the view, or the drop (./added.ts).
@@ -119,10 +123,11 @@ export function graphActions({ core, element, toCanvas, refuse, panel }: ActionP
       notePoint(at.canvas);
       const advanced = panel(target);
       const button = "button" in from ? from.button.getBoundingClientRect() : undefined;
+      const anchor = "drop" in from ? new DOMRect(from.drop.client.x, from.drop.client.y, 0, 0) : "button" in from ? besideToolbar(from.button) : undefined;
       await core.boardActions
         .trigger(id, target, {
           el,
-          ...("drop" in from ? { anchor: new DOMRect(from.drop.client.x, from.drop.client.y, 0, 0) } : {}),
+          ...(anchor === undefined ? {} : { anchor }),
           ...("board" in target || "drop" in from ? { extend: extendAt(at.canvas) } : {}),
           notifier: notifierAt(button === undefined ? at.client : { x: button.right, y: button.top }),
           ...(advanced === undefined ? {} : { advanced }),
@@ -130,6 +135,25 @@ export function graphActions({ core, element, toCanvas, refuse, panel }: ActionP
         .catch(() => undefined);
     },
   };
+}
+
+// How far below its anchor core's menu hangs: the offset of the popover of
+// core's React SDK.
+const MENU_OFFSET = 4;
+
+// How far to the right of the toolbar a menu opens, as the panel of search
+// keeps from it (../modules/graph/index.css).
+const SIDE_GAP = 8;
+
+// Where a menu that a button of the toolbar opens hangs from: SIDE_GAP to the
+// right of the toolbar, so that the menu's top lies as far above the button's
+// as the toolbar's own top lies above its first button's, which the toolbar's
+// border and padding set alike on every side.
+function besideToolbar(button: HTMLElement): DOMRect {
+  const rect = button.getBoundingClientRect();
+  const toolbar = button.closest(".blockr-graph-toolbar")?.getBoundingClientRect() ?? rect;
+  const inset = rect.left - toolbar.left;
+  return new DOMRect(toolbar.right + SIDE_GAP, rect.top - inset - MENU_OFFSET, 0, 0);
 }
 
 // The middle of the element, on the screen.

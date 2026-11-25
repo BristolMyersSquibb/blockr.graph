@@ -11,12 +11,15 @@
 // Each control is a button of core's React SDK with an icon, whose label is
 // its tooltip. A button of a board action shows the board action's icon, or
 // the DAG's own where it has none, and has the board action's label as its
-// tooltip. It opens the board action's quick action below itself, or its
-// advanced action where it has no quick action on the target, as Create link
-// on the board, or runs it where it asks nothing (./actions.ts).
+// tooltip. It opens the board action's quick action, or its advanced action
+// where it has no quick action on the target, as Create link on the board, or
+// runs it where it asks nothing (./actions.ts).
 // A + pops out a menu of the board actions that it holds, which the DAG draws
-// with core's React SDK, below itself. Picking one triggers it at the +, as
-// its own button would.
+// with core's React SDK. Picking one triggers it at the +, as its own button
+// would.
+// Whatever a button opens, opens to the right of the toolbar, level with the
+// button, as the panel of search does: the + its menu, and a board action its
+// quick action (./actions.ts).
 
 import type { BoardAction, Target } from "@blockr/core";
 import { Button, Menu, MenuItem, MenuTrigger, Separator, Toolbar, Tooltip, TooltipTrigger, useBoard } from "@blockr/core/react";
@@ -144,13 +147,15 @@ function ActionButton({ action, icon, target }: { action: BoardAction; icon: str
   );
 }
 
-// A + that pops out a menu of the board actions that it holds, below itself,
-// and triggers the one that the user picks at the +.
+// A + that pops out a menu of the board actions that it holds, to its right,
+// and triggers the one that the user picks at the +. The DAG's stylesheet
+// moves the menu out to the gap that the panel of search keeps from the
+// toolbar, which core's menu takes no offset for.
 function AddButton({ label, actions, target }: { label: string; actions: readonly BoardAction[]; target: Target }): ReactElement {
   const { actions: graph } = useGraph();
   const button = useRef<HTMLButtonElement>(null);
   return (
-    <MenuTrigger placement="bottom start">
+    <MenuTrigger placement="right top">
       <TooltipTrigger delay={DELAY}>
         <Button ref={button} variant="quiet" className="blockr-graph-control" aria-label={label}>
           <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden="true" className="blockr-graph-icon">
@@ -161,6 +166,7 @@ function AddButton({ label, actions, target }: { label: string; actions: readonl
       </TooltipTrigger>
       <Menu
         aria-label={label}
+        className="blockr-graph-add-menu"
         onAction={(key) => {
           const picked = actions.find((action) => action.id === key);
           const el = button.current;

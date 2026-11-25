@@ -10,6 +10,8 @@
   --blockr-graph-raised: var(--bc-color-bg-raised, Canvas);
   --blockr-graph-link: color-mix(in oklab, currentColor 40%, transparent);
   position: relative;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
@@ -18,6 +20,11 @@
   color: var(--blockr-graph-text);
   background: var(--blockr-graph-surface);
   font-family: var(--bc-font-sans, system-ui, sans-serif);
+}
+.blockr-graph-stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
 }
 .blockr-graph[data-height=own] {
   height: 50vh;
@@ -314,6 +321,9 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+[data-trigger=MenuTrigger]:has(.blockr-graph-add-menu) {
+  margin: -4px 0 0 8px;
+}
 .blockr-graph-search {
   display: grid;
   align-content: start;
@@ -353,16 +363,15 @@
   height: 16px;
 }
 .blockr-graph-panel {
-  position: absolute;
-  z-index: 6;
   display: flex;
+  flex: none;
   flex-direction: column;
   box-sizing: border-box;
+  max-height: 50%;
   overflow: hidden;
-  border: 1px solid var(--blockr-graph-border);
-  border-radius: 8px;
+  border-top: 1px solid var(--blockr-graph-border);
   background: var(--blockr-graph-raised);
-  box-shadow: 0 4px 16px color-mix(in oklab, CanvasText 18%, transparent);
+  outline: none;
 }
 .blockr-graph-panel-header {
   display: flex;
@@ -388,6 +397,9 @@
   min-height: 0;
   padding: 12px;
   overflow: auto;
+}
+.blockr-graph-panel-body > * {
+  max-width: 640px;
 }
 .blockr-graph-empty {
   position: absolute;

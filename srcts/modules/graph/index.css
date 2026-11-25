@@ -22,6 +22,11 @@
 
 @import "../../flow/vendor.css";
 
+/*
+ * The DAG's element is a column: the canvas with its toolbar on top, in the
+ * stage, and the panel of advanced actions below it while it shows one, which
+ * takes its height from the stage.
+ */
 .blockr-graph {
   --blockr-graph-surface: Canvas;
   --blockr-graph-text: var(--bc-color-text-default, CanvasText);
@@ -31,6 +36,8 @@
   --blockr-graph-raised: var(--bc-color-bg-raised, Canvas);
   --blockr-graph-link: color-mix(in oklab, currentColor 40%, transparent);
   position: relative;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
@@ -39,6 +46,12 @@
   color: var(--blockr-graph-text);
   background: var(--blockr-graph-surface);
   font-family: var(--bc-font-sans, system-ui, sans-serif);
+}
+
+.blockr-graph-stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 /*
@@ -398,6 +411,17 @@
   stroke-linejoin: round;
 }
 
+/*
+ * The menu of the toolbar's +, which React Aria opens level with the + and
+ * touching the toolbar, moved out to the gap that the panel of search keeps
+ * from the toolbar, and up to the toolbar's edge above the +, as the menus of
+ * the toolbar's other buttons open (../../ui/actions.ts). The menu lies in a
+ * popover at the end of the page, outside the DAG's element.
+ */
+[data-trigger="MenuTrigger"]:has(.blockr-graph-add-menu) {
+  margin: -4px 0 0 8px;
+}
+
 .blockr-graph-search {
   display: grid;
   align-content: start;
@@ -448,21 +472,22 @@
 }
 
 /*
- * The panel of advanced actions, on the canvas, beside the object that its
- * advanced action is about, with its title, its pin and its close button
- * above the advanced action, which scrolls within the panel.
+ * The panel of advanced actions, docked below the canvas, as wide as the
+ * DAG's element, with its title, its pin and its close button above the
+ * advanced action, which scrolls within the panel. It takes at most half of
+ * the element's height, and the stage the rest (../../ui/panel-place.ts). The
+ * advanced action keeps the width of a form, however wide the element is.
  */
 .blockr-graph-panel {
-  position: absolute;
-  z-index: 6;
   display: flex;
+  flex: none;
   flex-direction: column;
   box-sizing: border-box;
+  max-height: 50%;
   overflow: hidden;
-  border: 1px solid var(--blockr-graph-border);
-  border-radius: 8px;
+  border-top: 1px solid var(--blockr-graph-border);
   background: var(--blockr-graph-raised);
-  box-shadow: 0 4px 16px color-mix(in oklab, CanvasText 18%, transparent);
+  outline: none;
 }
 
 .blockr-graph-panel-header {
@@ -492,6 +517,10 @@
   min-height: 0;
   padding: 12px;
   overflow: auto;
+}
+
+.blockr-graph-panel-body > * {
+  max-width: 640px;
 }
 
 /*

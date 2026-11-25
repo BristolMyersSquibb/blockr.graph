@@ -219,6 +219,15 @@ describe("the selection", () => {
     expect(show).not.toHaveBeenCalled();
   });
 
+  test("selects no text on the page while a drag that starts on it goes on", async () => {
+    const { el } = await mounted();
+    const selecting = () => !document.dispatchEvent(new Event("selectstart", { cancelable: true }));
+    pane(el).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(selecting()).toBe(true);
+    document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    expect(selecting()).toBe(false);
+  });
+
   test("is cleared by a click on the canvas", async () => {
     const { el, core } = await mounted();
     act(() => {
@@ -609,6 +618,26 @@ describe("the toolbar", () => {
     expect(Object.keys(core.store.board().stacks)).toHaveLength(2);
   });
 
+  test("opens what a button opens to the right of the toolbar, level with the toolbar's edge above the button", async () => {
+    const { el, core } = await mounted();
+    // The toolbar is 36 px wide at 10, 10, and holds the button 4 px in from
+    // its edges, as happy-dom lays nothing out.
+    const rects = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.classList.contains("blockr-graph-toolbar")) return new DOMRect(10, 10, 36, 300);
+      if (this.getAttribute("aria-label") === "Layout") return new DOMRect(14, 200, 28, 28);
+      return new DOMRect(0, 0, 0, 0);
+    });
+    const trigger = vi.spyOn(core.boardActions, "trigger");
+    await press(button(el, "Layout"));
+    // Core's menu hangs 4 px below its anchor, so its top lies at 196, 4 px
+    // above the button's, as the toolbar's top lies 4 px above its first
+    // button's, and 8 px to the right of the toolbar.
+    const anchor = trigger.mock.calls[0]?.[2].anchor;
+    expect([anchor?.x, anchor?.y]).toEqual([54, 192]);
+    rects.mockRestore();
+    trigger.mockRestore();
+  });
+
   test("opens a board action's quick action, and runs one that asks nothing", async () => {
     const { el, core, stub } = await mounted();
     await press(button(el, "Layout"));
@@ -659,14 +688,15 @@ describe("the panel of advanced actions", () => {
     vi.restoreAllMocks();
   });
 
-  // Gives the DAG's element 1200 by 800 pixels, its toolbar a column at its
-  // top left, and every other element a box of 40 by 52 at 200, 200, as
-  // happy-dom lays nothing out.
+  // Gives the DAG's element 1200 by 800 pixels, the canvas above the panel
+  // 500, its toolbar a column at its top left, and every other element a box
+  // of 40 by 52 at 200, 470, as happy-dom lays nothing out.
   function room(): void {
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
       if (this.classList.contains("blockr-graph")) return new DOMRect(0, 0, 1200, 800);
+      if (this.classList.contains("blockr-graph-stage")) return new DOMRect(0, 0, 1200, 500);
       if (this.classList.contains("blockr-graph-toolbar")) return new DOMRect(10, 10, 36, 300);
-      return new DOMRect(200, 200, 40, 52);
+      return new DOMRect(200, 470, 40, 52);
     });
   }
 
@@ -674,9 +704,13 @@ describe("the panel of advanced actions", () => {
     return el.querySelector<HTMLElement>(".blockr-graph-panel");
   }
 
-  test("shows an advanced action on the board beside the toolbar, and closes once it ends", async () => {
-    const { el, core, stub } = await mountedWithTester();
-    room();
+  // Where the canvas's view lies, by the transform of React Flow's viewport.
+  function viewport(el: HTMLElement): string {
+    return el.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform ?? "";
+  }
+
+  // Opens the tester's advanced action from the menu of the canvas.
+  async function probe(el: HTMLElement, stub: StubCore): Promise<void> {
     await rightClick(pane(el));
     // The pick resolves once the advanced action that it opens ends.
     act(() => {
@@ -685,9 +719,15 @@ describe("the panel of advanced actions", () => {
     await vi.waitFor(() => {
       expect(panel(el)).not.toBeNull();
     });
+  }
+
+  test("docks an advanced action below the canvas, and closes once it ends", async () => {
+    const { el, core, stub } = await mountedWithTester();
+    room();
+    await probe(el, stub);
     expect(stub.advanced()).toBeUndefined();
     expect(panel(el)?.getAttribute("aria-label")).toBe("Probe");
-    expect([panel(el)?.style.left, panel(el)?.style.top]).toEqual(["54px", "10px"]);
+    expect(panel(el)?.previousElementSibling?.classList.contains("blockr-graph-stage")).toBe(true);
     expect(panel(el)?.querySelector("p")?.textContent).toBe('{"board":true}');
     await click(panel(el)?.querySelector("button:not([aria-label])") ?? el);
     await vi.waitFor(() => {
@@ -696,20 +736,41 @@ describe("the panel of advanced actions", () => {
     expect(names(core)).toContain("Renamed");
   });
 
-  test("shows the advanced action of a menu beside its object", async () => {
+  test("pans the canvas until the advanced action's object lies above the panel", async () => {
     const { el, stub } = await mountedWithTester();
     room();
+    const before = viewport(el);
     const edge = el.querySelector('.react-flow__edge[data-id="l:ab"]');
     if (edge === null) throw new Error("No edge");
     await rightClick(edge);
-    // The pick resolves once the advanced action that it opens ends.
     act(() => {
       void stub.menu()?.pick("Probe");
     });
     await vi.waitFor(() => {
       expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"ab"}');
     });
-    expect([panel(el)?.style.left, panel(el)?.style.top]).toEqual(["248px", "200px"]);
+    // The link's box reaches to 522 px, which the canvas of 500 px pans up
+    // until it ends 10 px above the panel.
+    const y = (transform: string) => Number(/translate\([^,]+,\s*(-?[\d.]+)px\)/.exec(transform)?.[1]);
+    await vi.waitFor(() => {
+      expect(y(viewport(el)) - y(before)).toBeCloseTo(-32);
+    });
+  });
+
+  test("takes the focus as it opens, and closes on Escape on the canvas, unless it is pinned", async () => {
+    const { el, stub } = await mountedWithTester();
+    room();
+    await probe(el, stub);
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(panel(el));
+    });
+    await keyDown(frameOf(el), { key: "Escape" });
+    expect(panel(el)).toBeNull();
+    expect(document.activeElement).toBe(frameOf(el));
+    await probe(el, stub);
+    await press(button(el, "Pin"));
+    await keyDown(frameOf(el), { key: "Escape" });
+    expect(panel(el)).not.toBeNull();
   });
 
   test("leaves the advanced action to the frontend's place where the canvas has no room for it", async () => {

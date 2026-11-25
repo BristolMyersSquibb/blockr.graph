@@ -1,36 +1,32 @@
-// Where the DAG's panel of advanced actions goes, beside the object that its
-// advanced action is about, and how far the canvas pans so that the object
-// stays in view beside it
+// Whether the DAG's element holds its panel of advanced actions below the
+// canvas, and how far the canvas pans so that the object that the advanced
+// action is about stays in view above the panel
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#its-advanced-actions).
-// Every box here is on the screen, relative to the DAG's element.
+// Every box here is on the screen, relative to the DAG's element, whose top
+// the canvas's top is.
 //
-// 1. The panel goes to the right of the object where the element has room for
-//    it there, and else to its left.
-// 2. Where neither side has room, the panel goes to the element's right edge,
-//    and the canvas pans the object to the left of it.
-// 3. Where the object lies above or below the element's edges, the canvas
-//    pans it into view as well.
-// 4. The panel's top is level with the object's top, but low enough on the
-//    element that the panel keeps a height of its own, and the panel reaches
-//    at most to the element's bottom.
+// The panel docks at the bottom of the element, as wide as the element, and
+// takes at most half of its height (../modules/graph/index.css). The canvas
+// shrinks to what the panel leaves above it, so that the panel hides nothing
+// of the canvas. Where the object then lies below the canvas's bottom, or
+// above its top, the canvas pans it into view.
 //
-// Where the element is too narrow to hold the object and the panel side by
-// side, as in a narrow panel of the dock, there is no place, and the DAG then
-// hands core no `advanced`, so that the frontend shows the advanced action in
-// its own place.
+// Where the element is narrower than every place of an advanced action is
+// wide, as a narrow panel of the dock is, or too low to hold the canvas above
+// the panel, the DAG hands core no `advanced`, so that the frontend shows the
+// advanced action in its own place.
 
-// The panel's width, which every place of an advanced action has at least
+// The width that every place of an advanced action has at least
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.1.16#the-advanced-action).
 export const PANEL_WIDTH = 420;
 
-// The room between the panel and the object, and between either and the
-// element's edges, as the toolbar keeps from the element's edges and from the
-// panel of search beside it.
-const GAP = 8;
-const MARGIN = 10;
+// The least height of the element, of which the panel takes at most half.
+export const LEAST_HEIGHT = 400;
 
-// The least height that the panel keeps where the object sits low.
-const LEAST_HEIGHT = 240;
+// The room that the object keeps from the canvas's top and bottom once the
+// canvas has panned it into view, as the toolbar keeps from the element's
+// edges.
+const MARGIN = 10;
 
 export interface Rect {
   readonly left: number;
@@ -39,45 +35,16 @@ export interface Rect {
   readonly height: number;
 }
 
-export interface PanelPlace {
-  readonly left: number;
-  readonly top: number;
-  // The most that the panel grows to, down to the element's bottom.
-  readonly height: number;
-  // How far the canvas pans, on the screen, so that the object shows beside
-  // the panel.
-  readonly pan: { readonly x: number; readonly y: number };
+// Whether the element holds the canvas with the panel below it.
+export function hasRoom(frame: { readonly width: number; readonly height: number }): boolean {
+  return frame.width >= PANEL_WIDTH && frame.height >= LEAST_HEIGHT;
 }
 
-// Where the panel goes beside the object in an element of the size given, or
-// undefined where the element has no room for both side by side.
-export function panelPlace(object: Rect, frame: { readonly width: number; readonly height: number }): PanelPlace | undefined {
-  if (!hasRoom(object, frame)) return undefined;
-  const right = object.left + object.width;
-  let left: number;
-  let x = 0;
-  if (right + GAP + PANEL_WIDTH + MARGIN <= frame.width) {
-    left = right + GAP;
-  } else if (object.left - GAP - PANEL_WIDTH >= MARGIN) {
-    left = object.left - GAP - PANEL_WIDTH;
-  } else {
-    left = frame.width - MARGIN - PANEL_WIDTH;
-    x = left - GAP - right;
-  }
-  const y = panInto(object.top, object.height, frame.height);
-  const top = Math.min(Math.max(object.top + y, MARGIN), Math.max(MARGIN, frame.height - MARGIN - LEAST_HEIGHT));
-  return { left, top, height: Math.max(0, frame.height - MARGIN - top), pan: { x, y } };
-}
-
-// Whether the element holds the object and the panel side by side.
-export function hasRoom(object: Pick<Rect, "width">, frame: { readonly width: number }): boolean {
-  return MARGIN + object.width + GAP + PANEL_WIDTH + MARGIN <= frame.width;
-}
-
-// How far the canvas pans an object along one axis so that it lies within the
-// element's margins, aligning a longer object with the element's start.
-function panInto(start: number, size: number, length: number): number {
-  if (start < MARGIN || size > length - 2 * MARGIN) return MARGIN - start;
-  const end = start + size;
-  return end > length - MARGIN ? length - MARGIN - end : 0;
+// How far the canvas pans the object down, on the screen, so that it lies
+// within the margins of a canvas of the height given, and with its top at
+// the top margin where it is taller than the canvas holds.
+export function revealPan(object: Rect, height: number): number {
+  if (object.top < MARGIN || object.height > height - 2 * MARGIN) return MARGIN - object.top;
+  const bottom = object.top + object.height;
+  return bottom > height - MARGIN ? height - MARGIN - bottom : 0;
 }
