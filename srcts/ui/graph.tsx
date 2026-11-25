@@ -30,8 +30,8 @@
 //   the user presses on the DAG or a moment has passed. A key has no point of
 //   its own, so core raises the refusal of a key's batch instead, which a
 //   frontend shows as a toast.
-// - Cmd or Ctrl with V pastes what the browser's paste hands the page
-//   (./paste.ts).
+// - The browser's key for paste, Cmd+V on macOS and Ctrl+V elsewhere, pastes
+//   what the browser's paste hands the page (./paste.ts).
 
 import type { CoreApi, LinkId, PluginClassId } from "@blockr/core";
 import { useBoard } from "@blockr/core/react";

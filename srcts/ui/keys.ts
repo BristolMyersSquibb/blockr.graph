@@ -7,8 +7,8 @@
 //   remove_selected_role, as React Flow binds it.
 // - Cmd or Ctrl with C and X triggers Copy and Cut, but while the user has
 //   selected text, which the browser copies as usual.
-// - Cmd or Ctrl with V runs the browser's own paste, whose event the DAG takes
-//   to trigger Paste (./paste.ts).
+// - The browser's key for paste, Cmd+V on macOS and Ctrl+V elsewhere, runs
+//   its own paste, whose event the DAG takes to trigger Paste (./paste.ts).
 //
 // Within its element, the DAG leaves alone a key that the user presses in a
 // field, and every key that the user presses in its panel of advanced actions

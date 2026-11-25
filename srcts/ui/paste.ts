@@ -1,4 +1,5 @@
-// How the DAG pastes as the user presses Cmd or Ctrl with V
+// How the DAG pastes as the user presses the browser's key for paste, Cmd+V on
+// macOS and Ctrl+V elsewhere
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#keys).
 // The DAG lets the browser run its own paste for the keys, rather than read
 // the clipboard as it sees them: the browser hands the page the clipboard with

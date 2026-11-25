@@ -245,7 +245,7 @@ test_that("Ctrl+C and Ctrl+V paste the block near the middle, on nothing", {
   )
 
   before <- app_blocks(app)
-  press_key(app, "v", "KeyV", 86L, CTRL)
+  press_paste(app)
 
   wait_until(
     function() length(app_blocks(app)) == length(before) + 1L,
@@ -328,7 +328,7 @@ test_that("a paste with nothing to paste says why in a toast", {
     userGesture = TRUE
   )
   click_at(app, center_of(app, mark_js("bod")))
-  press_key(app, "v", "KeyV", 86L, CTRL)
+  press_paste(app)
   expect_false(toast("The clipboard holds no board objects to paste."))
 
   expect_identical(app_blocks(app), before)
