@@ -170,6 +170,9 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
   // Runs the moves of the arrow keys that the DAG has not run yet, unless a
   // drag goes on, whose step takes them along.
   const drag = useRef<DragStart | null>(null);
+  // React Flow's root, within which a link dropped off every node lands on
+  // the canvas.
+  const root = useRef<HTMLDivElement>(null);
   const runKeys = useCallback(() => {
     clearTimeout(keyTimer.current);
     if (drag.current !== null || movesRef.current === NO_MOVES) return;
@@ -297,7 +300,7 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
       if (connection.fromNode === null) return;
       const { fromNode, fromHandle, toNode, toHandle, pointer, isValid } = connection;
       if (toNode === null) {
-        const dropped = canvasDrop(event, drawn.current.nodes, fromNode.id, fromHandle);
+        const dropped = canvasDrop(event, drawn.current.nodes, fromNode.id, fromHandle, root.current);
         if (dropped !== undefined) {
           void actions.trigger(dropped.role, dropped.target, { drop: { client: dropped.client, canvas: connection.to } });
         }
@@ -373,6 +376,7 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
 
   return (
     <ReactFlow<GraphNode, GraphEdge>
+      ref={root}
       nodes={nodes}
       edges={edges}
       nodeTypes={NODE_TYPES}

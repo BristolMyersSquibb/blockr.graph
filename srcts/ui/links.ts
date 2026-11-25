@@ -52,17 +52,19 @@ function takenPlace(link: string, place: string, block: BlockId): string {
 
 // What a link that the user dropped on the canvas triggers: the role, its
 // target and the drop on the screen, or undefined where the link was dropped
-// on a node, came from no block, or came from a variadic block's place that a
-// link holds.
+// on a node or off the canvas, as on another panel of the dock, came from no
+// block, or came from a variadic block's place that a link holds.
 export function canvasDrop(
   event: MouseEvent | TouchEvent,
   nodes: readonly GraphNode[],
   from: string,
   handle: { readonly id?: string | null; readonly type: "source" | "target" } | null,
+  canvas: Element | null,
 ): { readonly role: string; readonly target: Target; readonly client: Point } | undefined {
   const client = clientOf(event);
-  if (client === undefined || handle === null) return undefined;
-  if (document.elementFromPoint(client.x, client.y)?.closest(".react-flow__node") != null) return undefined;
+  if (client === undefined || handle === null || canvas === null) return undefined;
+  const hit = document.elementFromPoint(client.x, client.y);
+  if (hit === null || !canvas.contains(hit) || hit.closest(".react-flow__node") !== null) return undefined;
   const object = objectOf(from);
   const node = nodes.find((each) => each.id === from);
   if (object === undefined || !("block" in object) || node?.data.kind !== "block") return undefined;

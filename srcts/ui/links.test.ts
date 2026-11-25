@@ -2,7 +2,7 @@
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#gestures).
 
 import type { BlockRegistry, Board, RegistryEntry } from "@blockr/core";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { canvasOf } from "../geometry/index.ts";
 import { defaultState, GRAPH } from "../state/index.ts";
 import type { GraphState } from "../state/index.ts";
@@ -79,8 +79,16 @@ describe("a link dropped on the canvas", () => {
 
   const at = new MouseEvent("mouseup", { clientX: 30, clientY: 40 });
 
+  // React Flow's root, and its pane, which lies at the drop, as happy-dom lays
+  // nothing out.
+  const canvas = document.createElement("div");
+  const pane = canvas.appendChild(document.createElement("div"));
+  beforeEach(() => {
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(pane);
+  });
+
   test("from a block's result appends a block, through its role", () => {
-    expect(canvasDrop(at, nodes, "b:a", { id: "out", type: "source" })).toEqual({
+    expect(canvasDrop(at, nodes, "b:a", { id: "out", type: "source" }, canvas)).toEqual({
       role: "append_block_role",
       target: { block: "a" },
       client: { x: 30, y: 40 },
@@ -88,16 +96,21 @@ describe("a link dropped on the canvas", () => {
   });
 
   test("from an input prepends a block on it, or on a variadic block's next place", () => {
-    expect(canvasDrop(at, nodes, "b:m", { id: "in:y", type: "target" })).toMatchObject({ role: "prepend_block_role", target: { block: "m", input: "y" } });
-    expect(canvasDrop(at, nodes, "b:e", { id: NEXT, type: "target" })).toMatchObject({ role: "prepend_block_role", target: { block: "e", input: "" } });
+    expect(canvasDrop(at, nodes, "b:m", { id: "in:y", type: "target" }, canvas)).toMatchObject({ role: "prepend_block_role", target: { block: "m", input: "y" } });
+    expect(canvasDrop(at, nodes, "b:e", { id: NEXT, type: "target" }, canvas)).toMatchObject({ role: "prepend_block_role", target: { block: "e", input: "" } });
   });
 
   test("adds nothing from a variadic block's place that a link holds, nor on a node", () => {
-    expect(canvasDrop(at, nodes, "b:e", { id: "in:#ae", type: "target" })).toBeUndefined();
-    const node = document.createElement("div");
+    expect(canvasDrop(at, nodes, "b:e", { id: "in:#ae", type: "target" }, canvas)).toBeUndefined();
+    const node = canvas.appendChild(document.createElement("div"));
     node.className = "react-flow__node";
     vi.spyOn(document, "elementFromPoint").mockReturnValue(node);
-    expect(canvasDrop(at, nodes, "b:a", { id: "out", type: "source" })).toBeUndefined();
+    expect(canvasDrop(at, nodes, "b:a", { id: "out", type: "source" }, canvas)).toBeUndefined();
+  });
+
+  test("adds nothing off the canvas, as on another panel of the dock", () => {
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(document.createElement("div"));
+    expect(canvasDrop(at, nodes, "b:a", { id: "out", type: "source" }, canvas)).toBeUndefined();
   });
 });
 
