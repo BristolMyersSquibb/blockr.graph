@@ -427,8 +427,7 @@
 /*
  * The toolbar's buttons of board actions, after a line below the DAG's own
  * controls: each with the board action's icon, which core and the packages
- * give as SVG markup, or with the first letter of its label where it has
- * none.
+ * give as SVG markup, or with the DAG's own where it has none.
  */
 .blockr-graph .blockr-graph-separator {
   width: 20px;
@@ -442,12 +441,6 @@
 .blockr-graph-action-icon svg {
   width: 16px;
   height: 16px;
-}
-
-.blockr-graph-initial {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
 }
 
 /*

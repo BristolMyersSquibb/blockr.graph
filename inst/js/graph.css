@@ -352,11 +352,6 @@
   width: 16px;
   height: 16px;
 }
-.blockr-graph-initial {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
-}
 .blockr-graph-panel {
   position: absolute;
   z-index: 6;

@@ -1753,7 +1753,7 @@ import { createRoot } from "react-dom/client";
 
 // srcts/ui/graph.tsx
 import { useBoard as useBoard4 } from "@blockr/core/react";
-import { useCallback as useCallback4, useEffect as useEffect5, useLayoutEffect as useLayoutEffect2, useMemo as useMemo5, useRef as useRef5, useState as useState4 } from "react";
+import { useCallback as useCallback4, useEffect as useEffect5, useLayoutEffect as useLayoutEffect2, useMemo as useMemo5, useRef as useRef6, useState as useState4 } from "react";
 
 // srcts/flow/index.ts
 import {
@@ -3204,8 +3204,40 @@ function SearchPanel({ onClose }) {
 }
 
 // srcts/ui/toolbar.tsx
-import { Button as Button3, Separator, Toolbar, Tooltip as Tooltip2, TooltipTrigger as TooltipTrigger2, useBoard as useBoard3 } from "@blockr/core/react";
-import { useCallback as useCallback3, useSyncExternalStore as useSyncExternalStore2 } from "react";
+import { Button as Button3, Menu, MenuItem, MenuTrigger, Separator, Toolbar, Tooltip as Tooltip2, TooltipTrigger as TooltipTrigger2, useBoard as useBoard3 } from "@blockr/core/react";
+import { useCallback as useCallback3, useRef as useRef5, useSyncExternalStore as useSyncExternalStore2 } from "react";
+
+// srcts/ui/tools.ts
+var BIN = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.5h11M6.5 4.5V3h3v1.5M4 4.5l.7 9h6.6l.7-9"/></svg>';
+var BOARD_TOOLS = [
+  {
+    kind: "add",
+    label: "Add to the board",
+    actions: [{ role: "add_block_role" }, { role: "add_link_role" }, { role: "add_stack_role" }]
+  },
+  { kind: "button", action: { id: PASTE } },
+  { kind: "button", action: { id: LAYOUT } }
+];
+var SELECTION_TOOLS = [
+  { kind: "add", label: "Add the selection to a stack", actions: [{ role: "add_stack_role" }, { role: "add_to_stack_role" }] },
+  { kind: "button", action: { id: COPY2 } },
+  { kind: "button", action: { id: CUT } },
+  { kind: "button", action: { role: "remove_selected_role" }, icon: BIN }
+];
+function shownTools(tools, offered) {
+  const find = (listed) => offered.find((action) => "role" in listed ? action.role === listed.role : action.id === listed.id);
+  return tools.flatMap((tool) => {
+    if (tool.kind === "add") {
+      const actions = tool.actions.flatMap((listed) => find(listed) ?? []);
+      return actions.length === 0 ? [] : [{ kind: "add", label: tool.label, actions }];
+    }
+    const action = find(tool.action);
+    if (action === void 0) return [];
+    return [{ kind: "button", action, icon: action.icon === void 0 || action.icon === "" ? tool.icon ?? "" : action.icon }];
+  });
+}
+
+// srcts/ui/toolbar.tsx
 import { jsx as jsx7, jsxs as jsxs6 } from "react/jsx-runtime";
 var DELAY2 = 600;
 function Controls({ searching, onSearch, size }) {
@@ -3222,8 +3254,8 @@ function Controls({ searching, onSearch, size }) {
   };
   const onBoard = { board: true };
   const onSelection = { selection };
-  const boardActions = core.boardActions.on(onBoard);
-  const selectionActions = selection.length === 0 ? [] : core.boardActions.on(onSelection);
+  const boardTools = shownTools(BOARD_TOOLS, core.boardActions.on(onBoard));
+  const selectionTools = selection.length === 0 ? [] : shownTools(SELECTION_TOOLS, core.boardActions.on(onSelection));
   return /* @__PURE__ */ jsxs6(Toolbar, { orientation: "vertical", "aria-label": "Workflow tools", className: "blockr-graph-toolbar", children: [
     /* @__PURE__ */ jsxs6(Control, { label: "Search blocks", onPress: onSearch, pressed: searching, children: [
       /* @__PURE__ */ jsx7("path", { d: "M11 11 L14.5 14.5" }),
@@ -3232,10 +3264,10 @@ function Controls({ searching, onSearch, size }) {
     /* @__PURE__ */ jsx7(Control, { label: "Zoom in", onPress: () => void flow.zoomIn({ duration: DURATION }), children: /* @__PURE__ */ jsx7("path", { d: "M8 3 V13 M3 8 H13" }) }),
     /* @__PURE__ */ jsx7(Control, { label: "Zoom out", onPress: () => void flow.zoomOut({ duration: DURATION }), children: /* @__PURE__ */ jsx7("path", { d: "M3 8 H13" }) }),
     /* @__PURE__ */ jsx7(Control, { label: "Fit the view", onPress: fit, children: /* @__PURE__ */ jsx7("path", { d: "M2 6 V2 H6 M10 2 H14 V6 M14 10 V14 H10 M6 14 H2 V10" }) }),
-    boardActions.length === 0 ? null : /* @__PURE__ */ jsx7(Separator, { orientation: "horizontal", className: "blockr-graph-separator" }),
-    boardActions.map((action) => /* @__PURE__ */ jsx7(ActionButton, { action, target: onBoard }, `board:${action.id}`)),
-    selectionActions.length === 0 ? null : /* @__PURE__ */ jsx7(Separator, { orientation: "horizontal", className: "blockr-graph-separator" }),
-    selectionActions.map((action) => /* @__PURE__ */ jsx7(ActionButton, { action, target: onSelection }, `selection:${action.id}`))
+    boardTools.length === 0 ? null : /* @__PURE__ */ jsx7(Separator, { orientation: "horizontal", className: "blockr-graph-separator" }),
+    boardTools.map((tool) => /* @__PURE__ */ jsx7(ToolView, { tool, target: onBoard }, `board:${keyOf(tool)}`)),
+    selectionTools.length === 0 ? null : /* @__PURE__ */ jsx7(Separator, { orientation: "horizontal", className: "blockr-graph-separator" }),
+    selectionTools.map((tool) => /* @__PURE__ */ jsx7(ToolView, { tool, target: onSelection }, `selection:${keyOf(tool)}`))
   ] });
 }
 function Control({ label, onPress, pressed, children }) {
@@ -3254,7 +3286,13 @@ function Control({ label, onPress, pressed, children }) {
     /* @__PURE__ */ jsx7(Tooltip2, { placement: "right", children: label })
   ] });
 }
-function ActionButton({ action, target }) {
+function keyOf(tool) {
+  return tool.kind === "add" ? "add" : tool.action.id;
+}
+function ToolView({ tool, target }) {
+  return tool.kind === "add" ? /* @__PURE__ */ jsx7(AddButton, { label: tool.label, actions: tool.actions, target }) : /* @__PURE__ */ jsx7(ActionButton, { action: tool.action, icon: tool.icon, target });
+}
+function ActionButton({ action, icon, target }) {
   const { actions } = useGraph();
   return /* @__PURE__ */ jsxs6(TooltipTrigger2, { delay: DELAY2, children: [
     /* @__PURE__ */ jsx7(
@@ -3266,10 +3304,32 @@ function ActionButton({ action, target }) {
         onPress: (event) => {
           if (event.target instanceof HTMLElement) void actions.trigger(action.id, target, { button: event.target });
         },
-        children: action.icon === void 0 || action.icon === "" ? /* @__PURE__ */ jsx7("span", { className: "blockr-graph-initial", "aria-hidden": "true", children: action.label.charAt(0) }) : /* @__PURE__ */ jsx7("span", { className: "blockr-graph-action-icon", "aria-hidden": "true", dangerouslySetInnerHTML: { __html: action.icon } })
+        children: /* @__PURE__ */ jsx7("span", { className: "blockr-graph-action-icon", "aria-hidden": "true", dangerouslySetInnerHTML: { __html: icon } })
       }
     ),
     /* @__PURE__ */ jsx7(Tooltip2, { placement: "right", children: action.label })
+  ] });
+}
+function AddButton({ label, actions, target }) {
+  const { actions: graph } = useGraph();
+  const button = useRef5(null);
+  return /* @__PURE__ */ jsxs6(MenuTrigger, { placement: "bottom start", children: [
+    /* @__PURE__ */ jsxs6(TooltipTrigger2, { delay: DELAY2, children: [
+      /* @__PURE__ */ jsx7(Button3, { ref: button, variant: "quiet", className: "blockr-graph-control", "aria-label": label, children: /* @__PURE__ */ jsx7("svg", { width: 16, height: 16, viewBox: "0 0 16 16", "aria-hidden": "true", className: "blockr-graph-icon", children: /* @__PURE__ */ jsx7("path", { d: "M8 3 V13 M3 8 H13" }) }) }),
+      /* @__PURE__ */ jsx7(Tooltip2, { placement: "right", children: label })
+    ] }),
+    /* @__PURE__ */ jsx7(
+      Menu,
+      {
+        "aria-label": label,
+        onAction: (key) => {
+          const picked = actions.find((action) => action.id === key);
+          const el = button.current;
+          if (picked !== void 0 && el !== null) void graph.trigger(picked.id, target, { button: el });
+        },
+        children: actions.map((action) => /* @__PURE__ */ jsx7(MenuItem, { id: action.id, children: action.label }, action.id))
+      }
+    )
   ] });
 }
 
@@ -3284,14 +3344,14 @@ function GraphFrame({ core, plugin }) {
   const flow = useReactFlow();
   const [hovered, setHovered] = useState4(null);
   const [spread, setSpread] = useState4(null);
-  const fold = useRef5(void 0);
+  const fold = useRef6(void 0);
   useEffect5(
     () => () => {
       clearTimeout(fold.current);
     },
     []
   );
-  const element = useRef5(null);
+  const element = useRef6(null);
   const elementOf = useCallback4(() => element.current, []);
   const [refusal, setRefusal] = useState4(null);
   const refuse = useCallback4((client, message) => {

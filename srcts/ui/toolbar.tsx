@@ -3,31 +3,31 @@
 // It holds, in this order:
 //
 // 1. The DAG's own controls: search, zoom in, zoom out and fit.
-// 2. A button for each board action on the board, such as core's Add block,
-//    Create link and Create stack, and the DAG's Paste and Layout.
-// 3. While the user has selected something, a button for each board action on
-//    the selection, such as core's Remove and Create stack and the DAG's Copy
-//    and Cut.
+// 2. The board actions of its list on the board (./tools.ts): a + that pops
+//    out Add block, Create link and Create stack, then Paste and Layout.
+// 3. While the user has selected something, those on the selection: a + that
+//    pops out Create stack and Add to stack, then Copy, Cut and Remove.
 //
 // Each control is a button of core's React SDK with an icon, whose label is
 // its tooltip. A button of a board action shows the board action's icon, or
-// the first letter of its label where it has none, and has the board action's
-// label as its tooltip. It opens the board action's quick action below
-// itself, or its advanced action where it has no quick action on the target,
-// as Create link on the board, or runs it where it asks nothing
-// (./actions.ts). A board action that another package registers on the board
-// or on a selection gets a button too, as it gets a row in the DAG's menus.
-// The toolbar offers only what core.boardActions.on() gives, so that under
-// the board lock it offers only what the lock leaves.
+// the DAG's own where it has none, and has the board action's label as its
+// tooltip. It opens the board action's quick action below itself, or its
+// advanced action where it has no quick action on the target, as Create link
+// on the board, or runs it where it asks nothing (./actions.ts).
+// A + pops out a menu of the board actions that it holds, which the DAG draws
+// with core's React SDK, below itself. Picking one triggers it at the +, as
+// its own button would.
 
 import type { BoardAction, Target } from "@blockr/core";
-import { Button, Separator, Toolbar, Tooltip, TooltipTrigger, useBoard } from "@blockr/core/react";
-import { useCallback, useSyncExternalStore } from "react";
+import { Button, Menu, MenuItem, MenuTrigger, Separator, Toolbar, Tooltip, TooltipTrigger, useBoard } from "@blockr/core/react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useReactFlow } from "../flow/index.ts";
 import { canvasOf } from "../geometry/index.ts";
 import { defaultState, graphState } from "../state/index.ts";
 import { useGraph } from "./context.ts";
+import { BOARD_TOOLS, SELECTION_TOOLS, shownTools } from "./tools.ts";
+import type { ShownTool } from "./tools.ts";
 import { DURATION, fittedView } from "./view.ts";
 
 // How long the pointer rests on a button before its tooltip shows.
@@ -55,8 +55,8 @@ export function Controls({ searching, onSearch, size }: ControlsProps): ReactEle
   };
   const onBoard: Target = { board: true };
   const onSelection: Target = { selection };
-  const boardActions = core.boardActions.on(onBoard);
-  const selectionActions = selection.length === 0 ? [] : core.boardActions.on(onSelection);
+  const boardTools = shownTools(BOARD_TOOLS, core.boardActions.on(onBoard));
+  const selectionTools = selection.length === 0 ? [] : shownTools(SELECTION_TOOLS, core.boardActions.on(onSelection));
   return (
     <Toolbar orientation="vertical" aria-label="Workflow tools" className="blockr-graph-toolbar">
       <Control label="Search blocks" onPress={onSearch} pressed={searching}>
@@ -72,13 +72,13 @@ export function Controls({ searching, onSearch, size }: ControlsProps): ReactEle
       <Control label="Fit the view" onPress={fit}>
         <path d="M2 6 V2 H6 M10 2 H14 V6 M14 10 V14 H10 M6 14 H2 V10" />
       </Control>
-      {boardActions.length === 0 ? null : <Separator orientation="horizontal" className="blockr-graph-separator" />}
-      {boardActions.map((action) => (
-        <ActionButton key={`board:${action.id}`} action={action} target={onBoard} />
+      {boardTools.length === 0 ? null : <Separator orientation="horizontal" className="blockr-graph-separator" />}
+      {boardTools.map((tool) => (
+        <ToolView key={`board:${keyOf(tool)}`} tool={tool} target={onBoard} />
       ))}
-      {selectionActions.length === 0 ? null : <Separator orientation="horizontal" className="blockr-graph-separator" />}
-      {selectionActions.map((action) => (
-        <ActionButton key={`selection:${action.id}`} action={action} target={onSelection} />
+      {selectionTools.length === 0 ? null : <Separator orientation="horizontal" className="blockr-graph-separator" />}
+      {selectionTools.map((tool) => (
+        <ToolView key={`selection:${keyOf(tool)}`} tool={tool} target={onSelection} />
       ))}
     </Toolbar>
   );
@@ -112,7 +112,20 @@ function Control({ label, onPress, pressed, children }: ControlProps): ReactElem
   );
 }
 
-function ActionButton({ action, target }: { action: BoardAction; target: Target }): ReactElement {
+// What tells a tool apart from the others of its group.
+function keyOf(tool: ShownTool): string {
+  return tool.kind === "add" ? "add" : tool.action.id;
+}
+
+function ToolView({ tool, target }: { tool: ShownTool; target: Target }): ReactElement {
+  return tool.kind === "add" ? (
+    <AddButton label={tool.label} actions={tool.actions} target={target} />
+  ) : (
+    <ActionButton action={tool.action} icon={tool.icon} target={target} />
+  );
+}
+
+function ActionButton({ action, icon, target }: { action: BoardAction; icon: string; target: Target }): ReactElement {
   const { actions } = useGraph();
   return (
     <TooltipTrigger delay={DELAY}>
@@ -124,15 +137,42 @@ function ActionButton({ action, target }: { action: BoardAction; target: Target 
           if (event.target instanceof HTMLElement) void actions.trigger(action.id, target, { button: event.target });
         }}
       >
-        {action.icon === undefined || action.icon === "" ? (
-          <span className="blockr-graph-initial" aria-hidden="true">
-            {action.label.charAt(0)}
-          </span>
-        ) : (
-          <span className="blockr-graph-action-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: action.icon }} />
-        )}
+        <span className="blockr-graph-action-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: icon }} />
       </Button>
       <Tooltip placement="right">{action.label}</Tooltip>
     </TooltipTrigger>
+  );
+}
+
+// A + that pops out a menu of the board actions that it holds, below itself,
+// and triggers the one that the user picks at the +.
+function AddButton({ label, actions, target }: { label: string; actions: readonly BoardAction[]; target: Target }): ReactElement {
+  const { actions: graph } = useGraph();
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <MenuTrigger placement="bottom start">
+      <TooltipTrigger delay={DELAY}>
+        <Button ref={button} variant="quiet" className="blockr-graph-control" aria-label={label}>
+          <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden="true" className="blockr-graph-icon">
+            <path d="M8 3 V13 M3 8 H13" />
+          </svg>
+        </Button>
+        <Tooltip placement="right">{label}</Tooltip>
+      </TooltipTrigger>
+      <Menu
+        aria-label={label}
+        onAction={(key) => {
+          const picked = actions.find((action) => action.id === key);
+          const el = button.current;
+          if (picked !== undefined && el !== null) void graph.trigger(picked.id, target, { button: el });
+        }}
+      >
+        {actions.map((action) => (
+          <MenuItem key={action.id} id={action.id}>
+            {action.label}
+          </MenuItem>
+        ))}
+      </Menu>
+    </MenuTrigger>
   );
 }

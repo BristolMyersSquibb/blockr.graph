@@ -566,14 +566,47 @@ describe("a right click", () => {
 });
 
 describe("the toolbar", () => {
-  test("offers the board actions on the board, and on the selection while the user has selected something", async () => {
-    const { el, core } = await mounted();
-    for (const label of ["Add block", "Create link", "Create stack", "Paste", "Layout"]) expect(button(el, label)).toBeDefined();
-    expect(el.querySelector('button[aria-label="Copy"]')).toBeNull();
+  function hasButton(el: HTMLElement, label: string): boolean {
+    return el.querySelector(`button[aria-label="${label}"]`) !== null;
+  }
+
+  test("offers its own list of board actions on the board, and on the selection while the user has selected something", async () => {
+    const { el, core } = await mountedWithTester();
+    for (const label of ["Add to the board", "Paste", "Layout"]) expect(hasButton(el, label)).toBe(true);
+    // The board actions of the list's + show in no button of their own, and
+    // the board actions of other packages in none at all.
+    for (const label of ["Add block", "Create link", "Probe", "Break", "Copy"]) expect(hasButton(el, label)).toBe(false);
     act(() => {
       core.selection.set([{ block: "f" }]);
     });
-    for (const label of ["Copy", "Cut", "Remove"]) expect(button(el, label)).toBeDefined();
+    for (const label of ["Add the selection to a stack", "Copy", "Cut", "Remove"]) expect(hasButton(el, label)).toBe(true);
+  });
+
+  test("offers only what the board lock leaves", async () => {
+    const { el, core } = await mounted(helloWith({ positions: POSITIONS }, { ...HELLO.lock, board: true }));
+    act(() => {
+      core.selection.set([{ block: "f" }]);
+    });
+    for (const label of ["Layout", "Copy"]) expect(hasButton(el, label)).toBe(true);
+    for (const label of ["Add to the board", "Paste", "Add the selection to a stack", "Cut", "Remove"]) expect(hasButton(el, label)).toBe(false);
+  });
+
+  test("pops out the board actions of its +, and triggers the one that the user picks", async () => {
+    const { el, core, stub } = await mounted();
+    await press(button(el, "Add to the board"));
+    const items = () => [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
+    expect(items().map((item) => item.textContent.trim())).toEqual(["Add block", "Create link", "Create stack"]);
+    const stack = items().find((item) => item.textContent.trim() === "Create stack");
+    if (stack === undefined) throw new Error("No item Create stack");
+    await click(stack);
+    // Create stack's quick action opens at the +, with the name of the stack.
+    await vi.waitFor(() => {
+      expect(stub.menu()?.level()?.rows.map((row) => row.label)).toEqual(["Name"]);
+    });
+    await act(async () => {
+      await stub.menu()?.pick("Name");
+    });
+    expect(Object.keys(core.store.board().stacks)).toHaveLength(2);
   });
 
   test("opens a board action's quick action, and runs one that asks nothing", async () => {
@@ -644,7 +677,14 @@ describe("the panel of advanced actions", () => {
   test("shows an advanced action on the board beside the toolbar, and closes once it ends", async () => {
     const { el, core, stub } = await mountedWithTester();
     room();
-    await press(button(el, "Probe"));
+    await rightClick(pane(el));
+    // The pick resolves once the advanced action that it opens ends.
+    act(() => {
+      void stub.menu()?.pick("Probe");
+    });
+    await vi.waitFor(() => {
+      expect(panel(el)).not.toBeNull();
+    });
     expect(stub.advanced()).toBeUndefined();
     expect(panel(el)?.getAttribute("aria-label")).toBe("Probe");
     expect([panel(el)?.style.left, panel(el)?.style.top]).toEqual(["54px", "10px"]);
@@ -674,9 +714,14 @@ describe("the panel of advanced actions", () => {
 
   test("leaves the advanced action to the frontend's place where the canvas has no room for it", async () => {
     const { el, stub } = await mountedWithTester();
-    await press(button(el, "Probe"));
+    await rightClick(pane(el));
+    act(() => {
+      void stub.menu()?.pick("Probe");
+    });
+    await vi.waitFor(() => {
+      expect(stub.advanced()).toBeDefined();
+    });
     expect(panel(el)).toBeNull();
-    expect(stub.advanced()).toBeDefined();
   });
 
   test("once pinned, mounts an advanced action drawn in React afresh on the block that the user selects", async () => {
