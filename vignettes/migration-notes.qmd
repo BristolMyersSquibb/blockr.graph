@@ -1,0 +1,340 @@
+---
+title: "Migration notes for app scripts"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Migration notes for app scripts}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  render = function(x, ...) {
+    if (inherits(x, "shiny.appobj")) invisible() else knitr::knit_print(x, ...)
+  }
+)
+```
+
+```{r setup, message = FALSE}
+library(blockr.core)
+library(blockr.dock)
+library(blockr.graph)
+```
+
+An app script for blockr.core 0.1 draws the DAG of its board with blockr.dag.
+It passes the DAG's extension, which `new_dag_extension()` makes, to the `new_dock_board()` of blockr.dock 0.2.0.
+Version 0.2 of blockr.core moves the board from R to the browser, as its migration notes describe (`vignette("migration-notes", package = "blockr.core")`).
+On that version, blockr.graph draws the DAG, as a plugin that `new_graph_plugin()` makes.
+The package blockr.dag stays with blockr.core 0.1.
+
+These notes list each change that an app script needs to draw the DAG with blockr.graph 0.2.0 in place of blockr.dag.
+They are written so that an AI can apply them to a script.
+Each section names what a script calls in blockr.dag, says what takes its place, and shows the code of both.
+A script follows the migration notes of blockr.core and blockr.dock too, since it builds its board with blockr.core, and the dock draws it (`vignette("migration-notes", package = "blockr.dock")`).
+
+A script attaches blockr.graph in place of blockr.dag, as `library(blockr.graph)`.
+The package blockr.dag imports functions that blockr.dock 0.2.1 no longer has, so a script that still attaches it stops at `library(blockr.dag)`.
+No function of blockr.dag has an alias in blockr.graph ([The functions that go](#the-functions-that-go)).
+So a script that calls a function with its package, as `blockr.dag::new_dag_extension()`, calls the function that takes its place, as `blockr.graph::new_graph_plugin()`.
+
+## Boards that blockr.dag saved
+
+A board that blockr.dock 0.2.0 saved with the DAG's extension opens on blockr.core 0.2 once blockr.convert has turned its file into a JSON board.
+The migration notes of blockr.core and blockr.dock describe that conversion.
+The conversion makes the DAG's plugin from the extension's state, with `new_graph_plugin()`:
+
+- Each block keeps the position that the file holds for it.
+- The layout keeps its direction and spacing, and its other settings take their defaults ([The layout](#the-layout)).
+- No stack is collapsed, since the file does not record which stacks the DAG showed collapsed.
+
+The file holds no position for a stack.
+So as the board opens, the DAG places each stack that holds no block.
+The DAG also drops the position of each block that the board lacks, such as a block that the conversion leaves out.
+It raises a warning that names the block.
+
+Until 14 August 2026, blockr.dock wrote an empty state for each extension.
+So a file of blockr.dock 0.1.2 holds no state of the DAG, and the DAG lays such a board out as it opens.
+
+## The DAG's plugin
+
+In blockr.dag, `new_dag_extension()` makes the DAG's extension, which a script passes to `new_dock_board()` in `extensions`.
+In blockr.graph, `new_graph_plugin()` makes the DAG's plugin, which a script passes to the `new_board()` of blockr.core in `plugins`:
+
+```{r, eval = FALSE}
+# blockr.dag
+serve(
+  new_dock_board(
+    blocks = c(a = new_dataset_block("iris"), b = new_head_block()),
+    links = new_link("a", "b"),
+    extensions = new_dag_extension(
+      positions = list(
+        a = list(x = 200, y = 150),
+        b = list(x = 200, y = 350)
+      )
+    )
+  )
+)
+```
+
+```{r}
+# blockr.graph
+serve(
+  new_board(
+    blocks = c(a = new_dataset_block("iris"), b = new_head_block()),
+    links = new_link("a", "b"),
+    plugins = list(
+      new_graph_plugin(
+        positions = list(
+          a = list(x = 200, y = 150),
+          b = list(x = 200, y = 350)
+        )
+      )
+    )
+  )
+)
+```
+
+The function `new_graph_plugin(positions = list(), layout = graph_layout(), collapsed = character())` takes the DAG's state:
+
+- Its `positions` are those that `new_dag_extension()` takes.
+  Each gives where the node of a block sits on the canvas, by the block's id, as a list of the numbers `x` and `y`.
+  The numbers count pixels of the canvas, with `x` to the right and `y` downwards.
+  A position may also be a named vector, as `c(x = 200, y = 150)`.
+- Its `layout` is what `graph_layout()` writes, in place of `dag_layout()` ([The layout](#the-layout)).
+- Its `collapsed` is new.
+  It holds the ids of the stacks that the DAG shows collapsed as the board opens, as `collapsed = "s1"`.
+  In blockr.dag, every stack shows expanded as a board opens.
+
+The function refuses `NULL` for `positions` and for `layout`, which `new_dag_extension()` takes for their defaults.
+So a script that gives `positions = NULL` or `layout = NULL` drops the argument.
+The function takes no `...` either.
+In blockr.dag, `new_dag_extension()` passes its `...` on to the `new_dock_extension()` of blockr.dock.
+A script drops each argument that it passes that way, since the argument would stop the call as an unused argument.
+
+In blockr.dag, the DAG ignores the position of a block that the board lacks.
+In blockr.graph, the DAG drops such a position as the board opens, and raises a warning that names the block.
+So a script gives positions only for the blocks of its board.
+
+Where a script gives no position at all, the DAG lays the whole board out as it opens, as blockr.dag does.
+Where it gives positions for some blocks only, each of those blocks opens at its position.
+The DAG places each of the other blocks after the blocks that the block reads from, at the nearest free spot.
+
+Wherever blockr.graph is installed, `serve()` runs the DAG on every board by default, since its `plugins` default to every plugin class that `available_plugins()` lists.
+A board without the DAG's plugin opens with the DAG's default state, which holds no position, so the DAG lays the board out.
+The default of `serve()` may change, though, as the notes of blockr.core say.
+So a script still puts the plugin on its board, and passes `new_graph_plugin()` where it passed `new_dag_extension()`, even without arguments:
+
+```{r, eval = FALSE}
+# blockr.dag
+serve(new_dock_board(extensions = new_dag_extension()))
+```
+
+```{r}
+# blockr.graph
+serve(new_board(plugins = list(new_graph_plugin())))
+```
+
+In blockr.dag, code in R sets the extension's `positions` and `layout` from outside, through an update of the board.
+On blockr.core 0.2, nothing changes a board in R, as the notes of blockr.core say.
+The DAG's commands change its state in the browser instead.
+For example, `blockr.graph-change_position` moves blocks, and `blockr.graph-relayout` lays the board out again.
+
+## The DAG's panel in the dock
+
+In blockr.dag, `new_dock_board()` names the DAG's extension `dag`, after its class, unless the script names it in `extensions`.
+A view or a grid of blockr.dock places the extension's panel by that name, with `ext("dag")` or by the panel id `"ext_panel-dag"`.
+In blockr.graph, a plugin that the script leaves unnamed has no name.
+So a script that places the DAG's panel names the plugin `dag` in the `plugins` of `new_board()`.
+It places the panel with the `plg("dag")` of blockr.dock:
+
+```{r, eval = FALSE}
+# blockr.dag
+serve(
+  new_dock_board(
+    blocks = c(a = new_dataset_block("iris"), b = new_head_block()),
+    links = new_link("a", "b"),
+    extensions = new_dag_extension(),
+    views = list(main = list(ext("dag"), blk("a"), blk("b"))),
+    grids = list(main = dock_grid(ext("dag"), panels("a", "b")))
+  )
+)
+```
+
+```{r}
+# blockr.graph
+serve(
+  new_board(
+    blocks = c(a = new_dataset_block("iris"), b = new_head_block()),
+    links = new_link("a", "b"),
+    plugins = list(
+      new_dock_plugin(
+        views = list(
+          main = dock_view(dock_grid(plg("dag"), panels("a", "b")))
+        )
+      ),
+      dag = new_graph_plugin()
+    )
+  )
+)
+```
+
+A script may give the DAG's extension another name in `extensions`, as `list(workflow = new_dag_extension())`.
+It then gives the plugin the same name, as `list(workflow = new_graph_plugin())`.
+A grid may also name the DAG's plugin by the id of its class, `plg("blockr.graph-graph_plugin")`, which needs no name.
+Where a grid names a plugin that the board's `plugins` do not name, `new_board()` stops with an error that names the view and the plugin.
+
+## The layout
+
+In blockr.dag, `dag_layout()` writes the layout, which `new_dag_extension()` takes in `layout`.
+In blockr.graph, `graph_layout()` writes it, and `new_graph_plugin()` takes it in `layout`:
+
+```{r, eval = FALSE}
+# blockr.dag
+new_dag_extension(layout = dag_layout(direction = "LR", spacing = "compact"))
+```
+
+```{r}
+# blockr.graph
+new_graph_plugin(layout = graph_layout(direction = "LR", spacing = "compact"))
+```
+
+The function `graph_layout()` takes the `direction` and the `spacing` of `dag_layout()`, with the same values and defaults.
+The direction is `"TB"`, from top to bottom, or `"LR"`, from left to right.
+The spacing is `"normal"`, `"compact"` or `"loose"`.
+The function also takes three settings that blockr.dag lacks:
+
+- Its `placement` says how a block that a step adds gets its place.
+  Under `"repulsion"`, the default, the block stays where the step puts it, and the DAG moves the blocks near it to make room.
+  Under `"beside"`, the DAG moves the block to the nearest free spot, and moves no other block.
+- Its `snap` says whether every position that the DAG sets snaps to a multiple of `snap_size`.
+  It is `FALSE` by default.
+- Its `snap_size` is the size that positions snap to, 20 pixels of the canvas by default.
+
+The function `new_graph_plugin()` takes a layout that `graph_layout()` writes, and refuses any other.
+In blockr.dag, `new_dag_extension()` also takes a list of the settings, as `list(direction = "LR")`.
+A script wraps such a list in `graph_layout()`, as `graph_layout(direction = "LR")`.
+The function `is_dag_layout()` goes, and a script tests `inherits(x, "graph_layout")` in its place.
+
+In blockr.dag, G6 lays the whole board out again as blocks are added or removed, where the option `g6R.layout_on_data_change` is `TRUE`.
+In blockr.graph, the DAG lays the whole board out again only when someone asks for it.
+The user asks through the board action Layout, on the DAG's toolbar.
+Layout runs the command `blockr.graph-relayout`, which the assistant may run as well.
+A block that a step adds gets its place from the layout's `placement`.
+
+## Menus and the toolbar
+
+In blockr.dag, the generic `context_menu_items()` gives the entries of the DAG's context menu, which `new_context_menu_entry()` makes.
+The generic `toolbar_items()` gives the items of the DAG's toolbar, which `new_toolbar_item()` makes.
+A package or a script adds an entry or an item through a method of either generic for the class `dag_extension`.
+
+In blockr.graph, the DAG's menus are the menus of board actions of blockr.core.
+A board action is what a user triggers from a menu, a button or a gesture.
+It may ask the user for input, and then it runs commands, as one step that undo takes back.
+A package offers what it adds to a menu as a board action, which one of its plugin classes lists in its module in JavaScript.
+Core registers the board action with the class.
+Every menu of the kinds of object that the board action names in its `on` then offers it, the DAG's menus among them.
+
+So the generics go, with `new_context_menu_entry()`, `new_toolbar_item()`, `is_context_menu_entry()` and `is_toolbar_item()`, and nothing in R takes their place.
+A script that defines a method of `context_menu_items()` or `toolbar_items()` moves what the method adds into a package, as a board action.
+The notes of blockr.core say the same of a plugin that a script defines.
+The package lists a plugin class in its `._BLOCKR_MODULES_`, as `?blockr.core::read_blocks_yml` describes.
+The class's module, in JavaScript, lists the board actions in `boardActions`, each of the type `BoardAction` of `@blockr/core`.
+This module offers the board action Lock block on every block.
+The board action runs the command of blockr.core that changes a block, `blockr.core-change_block`:
+
+```js
+export const api = 1;
+
+export default {
+  boardActions: [
+    {
+      id: "mypkg-lock_block_action",
+      label: "Lock block",
+      on: ["block"],
+      category: "edit",
+      run: (board, target) => [
+        {
+          id: "blockr.core-change_block",
+          args: { id: target.block, locked: true },
+        },
+      ],
+    },
+  ],
+};
+```
+
+Each argument of an entry or an item of blockr.dag has this place in a board action:
+
+| In blockr.dag | In a board action |
+|---|---|
+| The `name` of an entry, and the `tooltip` of an item | Its `label`, which a menu shows, and a button as its tooltip |
+| The `id` of an entry or an item | Its `id`, which starts with the package, as `mypkg-lock_block_action` |
+| The `icon` of an item | Its `icon`, as SVG markup |
+| The `condition` of an entry | Its `on`, the kinds of object whose menus offer it, and its `offers()`, which decides for each object |
+| The `action` of an entry or an item, which changes the board in R | Its `run()`, which returns the commands that change the board, or its quick or advanced action, which asks the user first |
+| The `js` of an entry or an item, which runs in the browser and sends an input to R | Nothing, since core runs the board action in the browser |
+| The `retarget` of an entry, with which a pinned panel of the dock's sidebar follows the selection | Nothing, since a pinned place of an advanced action follows the selection, as the dock's sidebar does |
+
+The DAG's own entries and items carry over.
+Its menus offer core's board actions, such as Add block, Create link and Remove block, and the DAG's own, Copy, Cut, Paste and Layout.
+Its toolbar holds its own controls, search, zoom in, zoom out and fit, and a short list of board actions.
+On the board, the list holds Add block, Create link, Create stack, Paste and Layout.
+On a selection, it holds Create stack, Add to stack, Copy, Cut and Remove.
+A board action that another package adds on the board or on a selection shows in the DAG's menus, but not on its toolbar.
+The user opens the menu of the board with a right click on the DAG's canvas, and the menu of a selection with a right click on the selection.
+
+## The status of a block
+
+In blockr.dag, the DAG's method of the generic `extension_block_callback()` of blockr.dock draws a badge on the node of each block that has an error.
+In blockr.graph, each node shows the status dot of its block, from the block's status and its notifications, as the dock's card does.
+So nothing takes the place of the method.
+A script that defines a method of `extension_block_callback()` for the class `dag_extension` drops it.
+
+## Options
+
+The package blockr.dag reads the R option `blockr.dag.svg_renderer`, and g6R, which draws its canvas, reads options of its own.
+The package blockr.graph draws with neither G6 nor g6R, and reads none of these options.
+So a script drops them:
+
+```{r, eval = FALSE}
+# blockr.dag
+options(
+  g6R.mode = "dev",
+  g6R.directed_graph = TRUE,
+  g6R.layout_on_data_change = TRUE
+)
+
+serve(new_dock_board(extensions = new_dag_extension()))
+```
+
+```{r}
+# blockr.graph
+serve(new_board(plugins = list(new_graph_plugin())))
+```
+
+What each option did has this place in blockr.graph:
+
+| Option | In blockr.graph |
+|---|---|
+| `blockr.dag.svg_renderer` | Nothing, since the DAG draws its nodes as elements of the page, rather than on a canvas element |
+| `g6R.mode` | Nothing, since the DAG always shows why the board refuses an edit, such as a link that the user drops |
+| `g6R.directed_graph` | Nothing, since the DAG reads the links from the board |
+| `g6R.layout_on_data_change` | Nothing, since the DAG lays the whole board out again only when someone asks for it ([The layout](#the-layout)) |
+| `g6R.preserve_elements_position` | Nothing, since the DAG keeps every position in its state, and draws each block where its state puts it |
+
+## The functions that go
+
+The table gives each function of blockr.dag that is gone, with what takes its place.
+
+| Function of blockr.dag | In blockr.graph |
+|---|---|
+| `new_dag_extension()` | `new_graph_plugin()`, in the `plugins` of `new_board()` |
+| `dag_layout()` | `graph_layout()` |
+| `is_dag_layout()` | Nothing, since a script tests `inherits(x, "graph_layout")` |
+| `context_menu_items()`, `new_context_menu_entry()` and `is_context_menu_entry()` | A board action, which a plugin class of a package lists ([Menus and the toolbar](#menus-and-the-toolbar)) |
+| `toolbar_items()`, `new_toolbar_item()` and `is_toolbar_item()` | A board action, which a plugin class of a package lists ([Menus and the toolbar](#menus-and-the-toolbar)) |
+| The DAG's method of `extension_block_callback()` | Nothing, since each node shows the status dot of its block |
+
+The functions of blockr.graph that a script calls are `new_graph_plugin()` and `graph_layout()`.

@@ -12,3 +12,4 @@ In that version, the browser holds the state of a board, and R evaluates its blo
 Until that version is released, the package is developed on the [`js-state`](https://github.com/BristolMyersSquibb/blockr.graph/tree/js-state) branch.
 The main branch holds only this README and the licence.
 For the current version of blockr, [blockr.dag](https://github.com/BristolMyersSquibb/blockr.dag) draws the DAG.
+An app script that moves from blockr.dag to blockr.graph follows the migration notes, `vignette("migration-notes", package = "blockr.graph")`.
