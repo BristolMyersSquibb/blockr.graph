@@ -333,17 +333,19 @@ function copiedBoard(json, copied) {
   const { board } = json;
   const graph = board.plugins[GRAPH];
   const state = graph === void 0 || !isGraphState(graph.state) ? void 0 : graph.state;
-  return {
-    ...json,
-    board: {
-      ...board,
-      blocks: kept(board.blocks, (id) => blocks.has(id)),
-      links: kept(board.links, (_id, link) => blocks.has(link.from) && blocks.has(link.to)),
-      stacks: kept(board.stacks, (id) => stacks.has(id)),
-      options: {},
-      plugins: graph === void 0 || state === void 0 ? {} : { [GRAPH]: { ...graph, state: copiedState(state, blocks, stacks) } }
-    }
+  const taken = {
+    ...board,
+    blocks: kept(board.blocks, (id) => blocks.has(id)),
+    links: kept(board.links, (_id, link) => blocks.has(link.from) && blocks.has(link.to)),
+    stacks: kept(board.stacks, (id) => stacks.has(id)),
+    options: {},
+    plugins: graph === void 0 || state === void 0 ? {} : { [GRAPH]: { ...graph, state: copiedState(state, blocks, stacks) } }
   };
+  return { ...json, packages: packagesOf(taken, json.packages), board: taken };
+}
+function packagesOf(board, packages) {
+  const ids = [...Object.values(board.blocks).map((block) => block.registry_id), ...Object.keys(board.plugins)];
+  return kept(packages, (pkg) => ids.some((id) => id.startsWith(`${pkg}-`)));
 }
 function copiedState(state, blocks, stacks) {
   return {
