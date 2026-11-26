@@ -7,10 +7,11 @@
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.1):
 //
 // - Its `state`: the schema of the state, which the build generates from the
-//   state's types, and the default of the state, which holds no position.
-// - Its `update`, which drops what the state holds of each block and stack
-//   that a delta removes, its `afterStep`, which places whatever a step adds,
-//   and its `start`, which gives every block and stack a position as a board
+//   state's types, the default of the state, which holds no position, and
+//   the class's `update` and `afterStep` (../../plugin). The `update` drops
+//   what the state holds of each block and stack that a delta removes. The
+//   `afterStep` places whatever a step adds.
+// - Its `start`, which gives every block and stack a position as a board
 //   opens (../../plugin).
 // - Its five commands (../../commands), which core registers with the class.
 // - Its four board actions, Copy, Cut, Paste and Layout (../../actions), which
@@ -38,9 +39,7 @@ import { ui } from "../../ui/index.ts";
 export const api = 1;
 
 export default {
-  state: { schema, default: defaultState },
-  update,
-  afterStep,
+  state: { schema, default: defaultState, update, afterStep },
   start,
   commands: graphCommands,
   boardActions: graphBoardActions,
