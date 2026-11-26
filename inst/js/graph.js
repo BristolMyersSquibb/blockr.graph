@@ -1265,7 +1265,7 @@ var graphBoardActions = [
       }
       const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken));
       if (batch.length > 0) return batch;
-      if (!read.dropped.some((dropped) => "block" in dropped)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
+      if (!read.dropped.some((dropped) => "block" in dropped.about)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
       return void 0;
     }
   },

@@ -63,7 +63,7 @@ describe("the JSON board that Copy writes", () => {
           { ...block, registry_id: id === "e" ? "blockr.ggplot-ggplot_block" : block.registry_id, version: 1 },
         ]),
       ),
-      options: { "blockr.core-board_name": { value: "Test", version: 1 } },
+      options: { "blockr.core-board_name": { value: "Test", version: 1, package: "blockr.core" } },
       plugins: { [GRAPH]: { state: stateOf(board), version: 1 }, "blockr.test-notes": { state: { text: "" }, version: 1 } },
     },
   };
