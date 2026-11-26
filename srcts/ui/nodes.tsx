@@ -33,7 +33,8 @@
 //   does (./canvas.tsx).
 
 import type { BlockId, RegistryEntry, Target } from "@blockr/core";
-import { Button, useNotified, useStatus } from "@blockr/core/react";
+import { useNotified, useStatus } from "@blockr/core/react";
+import { Button } from "@blockr/ui";
 import { memo } from "react";
 import type { CSSProperties, MouseEvent, ReactElement } from "react";
 import { Handle } from "../flow/index.ts";
@@ -163,7 +164,7 @@ export function handleTarget(block: BlockId, handle: HandleSpec): Target | undef
 
 function DrawnStack({ data, selected }: NodeProps<StackNode>): ReactElement {
   const { core } = useGraph();
-  const color = data.color ?? "var(--bc-color-border-default)";
+  const color = data.color ?? "var(--bk-color-border)";
   const count = `${String(data.count)} ${data.count === 1 ? "block" : "blocks"}`;
   const collapse =
     data.shows === "empty" ? null : (

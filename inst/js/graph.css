@@ -2,12 +2,6 @@
 
 /* srcts/modules/graph/index.css */
 .blockr-graph {
-  --blockr-graph-surface: Canvas;
-  --blockr-graph-text: var(--bc-color-text-default, CanvasText);
-  --blockr-graph-muted: var(--bc-color-text-muted, color-mix(in oklab, currentColor 65%, transparent));
-  --blockr-graph-border: var(--bc-color-border-default, color-mix(in oklab, currentColor 25%, transparent));
-  --blockr-graph-accent: var(--bc-color-border-accent, #3b82f6);
-  --blockr-graph-raised: var(--bc-color-bg-raised, Canvas);
   --blockr-graph-link: color-mix(in oklab, currentColor 40%, transparent);
   position: relative;
   display: flex;
@@ -17,9 +11,7 @@
   height: 100%;
   overflow: hidden;
   outline: none;
-  color: var(--blockr-graph-text);
-  background: var(--blockr-graph-surface);
-  font-family: var(--bc-font-sans, system-ui, sans-serif);
+  font-family: var(--bk-font-sans);
 }
 .blockr-graph-stage {
   position: relative;
@@ -35,21 +27,21 @@
   --xy-background-color: transparent;
   --xy-edge-stroke: var(--blockr-graph-link);
   --xy-edge-stroke-width: 1.5;
-  --xy-edge-stroke-selected: var(--blockr-graph-accent);
-  --xy-connectionline-stroke: var(--blockr-graph-accent);
+  --xy-edge-stroke-selected: var(--bk-color-primary);
+  --xy-connectionline-stroke: var(--bk-color-primary);
   --xy-connectionline-stroke-width: 1.5;
-  --xy-edge-label-background-color: var(--blockr-graph-surface);
-  --xy-edge-label-color: var(--blockr-graph-text);
-  --xy-handle-background-color: var(--blockr-graph-surface);
+  --xy-edge-label-background-color: var(--bk-color-card);
+  --xy-edge-label-color: var(--bk-color-card-foreground);
+  --xy-handle-background-color: var(--bk-color-card);
   --xy-handle-border-color: var(--blockr-graph-link);
-  --xy-selection-background-color: color-mix(in oklab, var(--blockr-graph-accent) 8%, transparent);
-  --xy-selection-border: 1px dashed var(--blockr-graph-accent);
+  --xy-selection-background-color: color-mix(in oklab, var(--bk-color-primary) 8%, transparent);
+  --xy-selection-border: 1px dashed var(--bk-color-primary);
   --xy-attribution-background-color: transparent;
 }
-:root[data-bc-theme=dark] .blockr-graph {
+:root[data-bk-mode=dark] .blockr-graph {
   color-scheme: dark;
 }
-:root[data-bc-theme=light] .blockr-graph {
+:root[data-bk-mode=light] .blockr-graph {
   color-scheme: light;
 }
 .blockr-graph .react-flow__node:focus,
@@ -69,6 +61,7 @@
   display: inline-flex;
   flex-shrink: 0;
   border-radius: 8px;
+  background: var(--bk-color-card);
 }
 .blockr-graph-mark {
   display: inline-flex;
@@ -79,7 +72,7 @@
   height: 32px;
   border-radius: 8px;
   font-size: 18px;
-  color: var(--bc-color-category-uncategorized, #999999);
+  color: var(--bc-color-category-uncategorized);
   background: color-mix(in srgb, currentColor 18%, transparent);
 }
 .blockr-graph-mark svg {
@@ -87,35 +80,37 @@
   height: 1em;
 }
 .blockr-graph-mark[data-category=input] {
-  color: var(--bc-color-category-input, #0072b2);
+  color: var(--bc-color-category-input);
 }
 .blockr-graph-mark[data-category=transform] {
-  color: var(--bc-color-category-transform, #009e73);
+  color: var(--bc-color-category-transform);
 }
 .blockr-graph-mark[data-category=structured] {
-  color: var(--bc-color-category-structured, #56b4e9);
+  color: var(--bc-color-category-structured);
 }
 .blockr-graph-mark[data-category=plot] {
-  color: var(--bc-color-category-plot, #e69f00);
+  color: var(--bc-color-category-plot);
 }
 .blockr-graph-mark[data-category=table] {
-  color: var(--bc-color-category-table, #cc79a7);
+  color: var(--bc-color-category-table);
 }
 .blockr-graph-mark[data-category=model] {
-  color: var(--bc-color-category-model, #f0e442);
+  color: var(--bc-color-category-model);
 }
 .blockr-graph-mark[data-category=output] {
-  color: var(--bc-color-category-output, #d55e00);
+  color: var(--bc-color-category-output);
 }
 .blockr-graph-mark[data-category=utility] {
-  color: var(--bc-color-category-utility, #cccccc);
+  color: var(--bc-color-category-utility);
 }
-.blockr-graph-block[data-selected] .blockr-graph-mark-frame,
+.blockr-graph-block[data-selected] .blockr-graph-mark-frame {
+  box-shadow: 0 0 0 2px var(--bk-color-card), 0 0 0 4px var(--bk-color-primary);
+}
 .react-flow__node:focus-visible .blockr-graph-mark-frame {
-  box-shadow: 0 0 0 2px var(--blockr-graph-surface), 0 0 0 4px var(--blockr-graph-accent);
+  box-shadow: 0 0 0 2px var(--bk-color-card), 0 0 0 4px var(--bk-color-ring);
 }
 .blockr-graph-block[data-selected] .blockr-graph-name {
-  color: var(--blockr-graph-accent);
+  color: var(--bk-color-primary-text);
 }
 .blockr-graph-name {
   position: absolute;
@@ -139,29 +134,29 @@
   height: 8px;
   border-radius: 50%;
   background-color: currentColor;
-  box-shadow: 0 0 0 2px var(--blockr-graph-surface);
+  box-shadow: 0 0 0 2px var(--bk-color-card);
 }
 .blockr-graph-dot[data-ring] {
-  background-color: var(--blockr-graph-surface);
-  box-shadow: inset 0 0 0 1.5px currentColor, 0 0 0 2px var(--blockr-graph-surface);
+  background-color: var(--bk-color-card);
+  box-shadow: inset 0 0 0 1.5px currentColor, 0 0 0 2px var(--bk-color-card);
 }
 .blockr-graph-dot[data-status=stale] {
-  color: var(--bc-color-status-stale, #6b7280);
+  color: var(--bc-color-status-stale);
 }
 .blockr-graph-dot[data-status=waiting] {
-  color: var(--bc-color-status-waiting, #d97706);
+  color: var(--bc-color-status-waiting);
 }
 .blockr-graph-dot[data-status=invalid] {
-  color: var(--bc-color-status-invalid, #d97706);
+  color: var(--bc-color-status-invalid);
 }
 .blockr-graph-dot[data-status=failed] {
-  color: var(--bc-color-status-failed, #dc2626);
+  color: var(--bc-color-status-failed);
 }
 .blockr-graph-dot[data-status=ready] {
-  color: var(--bc-color-status-ready, #16a34a);
+  color: var(--bc-color-status-ready);
 }
 .blockr-graph-dot[data-status=unevaluated] {
-  color: var(--bc-color-status-unevaluated, #6b7280);
+  color: var(--bc-color-status-unevaluated);
 }
 .blockr-graph .blockr-graph-handle {
   box-sizing: border-box;
@@ -170,7 +165,7 @@
   transform: none;
   pointer-events: all;
   border: 1.5px solid var(--blockr-graph-link);
-  background-color: var(--blockr-graph-surface);
+  background-color: var(--bk-color-card);
   transition: transform 80ms ease-out;
 }
 .blockr-graph .blockr-graph-handle::before {
@@ -181,8 +176,8 @@
 .blockr-graph .blockr-graph-handle:hover {
   z-index: 1;
   transform: scale(1.5);
-  border-color: var(--blockr-graph-accent);
-  background-color: var(--blockr-graph-accent);
+  border-color: var(--bk-color-primary);
+  background-color: var(--bk-color-primary);
 }
 .blockr-graph .blockr-graph-stack-handle {
   pointer-events: none;
@@ -193,15 +188,15 @@
   pointer-events: none;
 }
 .blockr-graph .react-flow__edge.selected .blockr-graph-arrow {
-  fill: var(--blockr-graph-accent);
+  fill: var(--bk-color-primary);
 }
 .blockr-graph .react-flow__edge:hover .react-flow__edge-path,
 .blockr-graph .react-flow__edge.blockr-graph-hovered .react-flow__edge-path {
-  stroke: var(--blockr-graph-muted);
+  stroke: var(--bk-color-muted-foreground);
 }
 .blockr-graph .react-flow__edge:hover .blockr-graph-arrow,
 .blockr-graph .react-flow__edge.blockr-graph-hovered .blockr-graph-arrow {
-  fill: var(--blockr-graph-muted);
+  fill: var(--bk-color-muted-foreground);
 }
 .blockr-graph .react-flow__edge-textwrapper {
   opacity: 0;
@@ -228,7 +223,7 @@
   border-style: dashed;
 }
 .blockr-graph-stack[data-selected] {
-  outline: 2px solid var(--blockr-graph-accent);
+  outline: 2px solid var(--bk-color-primary);
   outline-offset: 2px;
 }
 .blockr-graph-stack-name {
@@ -262,7 +257,7 @@
   text-overflow: ellipsis;
 }
 .blockr-graph-stack-count {
-  color: var(--blockr-graph-muted);
+  color: var(--bk-color-muted-foreground);
   font-size: 11px;
   line-height: 14px;
 }
@@ -299,20 +294,26 @@
 .blockr-graph-toolbar {
   gap: 2px;
   padding: 3px;
-  border: 1px solid var(--blockr-graph-border);
+  border: 1px solid var(--bk-color-border);
   border-radius: 8px;
-  background: var(--blockr-graph-raised);
-  box-shadow: 0 1px 3px color-mix(in oklab, CanvasText 12%, transparent);
+  background: var(--bk-color-popover);
+  color: var(--bk-color-popover-foreground);
+  box-shadow: var(--bk-shadow-sm);
 }
 .blockr-graph .blockr-graph-control {
   justify-content: center;
   width: 28px;
   height: 28px;
   padding: 0;
-  color: var(--blockr-graph-text);
+  color: var(--bk-color-popover-foreground);
+}
+@media (hover: hover) {
+  .blockr-graph .blockr-graph-control:hover {
+    color: var(--bk-color-accent-foreground);
+  }
 }
 .blockr-graph .blockr-graph-control[aria-expanded=true] {
-  background: color-mix(in oklab, var(--blockr-graph-accent) 14%, transparent);
+  background: color-mix(in oklab, var(--bk-color-primary) 14%, transparent);
 }
 .blockr-graph-icon {
   fill: none;
@@ -333,14 +334,15 @@
   max-height: 100%;
   padding: 8px;
   overflow: auto;
-  border: 1px solid var(--blockr-graph-border);
+  border: 1px solid var(--bk-color-border);
   border-radius: 8px;
-  background: var(--blockr-graph-raised);
-  box-shadow: 0 2px 8px color-mix(in oklab, CanvasText 14%, transparent);
+  background: var(--bk-color-popover);
+  color: var(--bk-color-popover-foreground);
+  box-shadow: var(--bk-shadow-md);
 }
 .blockr-graph-search-heading {
   margin: 4px 0 0;
-  color: var(--blockr-graph-muted);
+  color: var(--bk-color-muted-foreground);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -348,7 +350,7 @@
 }
 .blockr-graph-search-none {
   margin: 0;
-  color: var(--blockr-graph-muted);
+  color: var(--bk-color-muted-foreground);
   font-size: 13px;
 }
 .blockr-graph .blockr-graph-separator {
@@ -369,8 +371,9 @@
   box-sizing: border-box;
   max-height: 50%;
   overflow: hidden;
-  border-top: 1px solid var(--blockr-graph-border);
-  background: var(--blockr-graph-raised);
+  border-top: 1px solid var(--bk-color-border);
+  background: var(--bk-color-popover);
+  color: var(--bk-color-popover-foreground);
   outline: none;
 }
 .blockr-graph-panel-header {
@@ -378,7 +381,7 @@
   align-items: center;
   gap: 2px;
   padding: 6px 6px 6px 12px;
-  border-bottom: 1px solid var(--blockr-graph-border);
+  border-bottom: 1px solid var(--bk-color-border);
 }
 .blockr-graph-panel-title {
   flex: 1;
@@ -408,7 +411,7 @@
   z-index: 4;
   margin: 0;
   transform: translate(-50%, -50%);
-  color: var(--blockr-graph-muted);
+  color: var(--bk-color-muted-foreground);
   font-size: 14px;
   text-align: center;
   pointer-events: none;
@@ -420,11 +423,11 @@
   max-width: 320px;
   padding: 6px 10px;
   transform: translate(8px, 8px);
-  border: 1px solid var(--bc-color-border-danger, #ef4444);
+  border: 1px solid var(--bk-color-destructive);
   border-radius: 6px;
-  background: var(--blockr-graph-raised);
-  color: var(--bc-color-text-danger, #b91c1c);
+  background: var(--bk-color-popover);
+  color: var(--bk-color-destructive-text);
   font-size: 13px;
   white-space: pre-wrap;
-  box-shadow: 0 2px 8px color-mix(in oklab, CanvasText 14%, transparent);
+  box-shadow: var(--bk-shadow-md);
 }

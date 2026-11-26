@@ -6,18 +6,25 @@
  * - React Flow's own stylesheet comes first, from the vendor file that the
  *   build writes of it. React Flow puts its rules in the cascade layer xyflow,
  *   so the rules below, which no layer holds, win over them.
- * - The DAG takes its colours from core's theme variables, as
- *   --bc-color-border-default, and sets React Flow's own variables from them.
- *   Each falls back to what the page's text gives, so that the DAG reads under
- *   a frontend that sets none of them.
+ * - The DAG takes each colour from the theme variable of blockr.ui whose job
+ *   it does, and sets React Flow's own variables from them
+ *   (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.7.2#colours).
+ *   A node takes card, which is opaque, since a node covers the links below
+ *   it, and the toolbar and the panels take popover, as overlays do. A link
+ *   draws 40% of the colour of the text around it. The stylesheet holds no
+ *   colour of its own, and its faces read --bk-font-sans.
+ * - The DAG leaves its own background transparent, and its text takes the
+ *   colour of what holds it, so that it shows the page or the panel that the
+ *   frontend puts it in.
+ * - The marks and the status dots read core's colours of categories and
+ *   statuses, as --bc-color-status-failed, until the DAG draws core's mark and
+ *   status dot.
  * - React Flow sets `color-scheme: light dark` on its root, so that it follows
  *   the system's mode. The DAG follows the mode that core's board option
  *   dark_mode switches the page to instead, which core writes on the page's
- *   root as data-bc-theme. It sets that mode on its own element, whose
- *   background the system colour Canvas paints, and React Flow's root, the
- *   toolbar and the panel inherit it from there. The element that holds the
- *   DAG can be of another mode: the dock's shell keeps the light mode of
- *   dockview's theme while core's mode is dark.
+ *   root as data-bk-mode. It sets that mode on its own element, and React
+ *   Flow's root, the toolbar and the panel inherit it from there, so that
+ *   their scrollbars and form controls draw in that mode.
  */
 
 @import "../../flow/vendor.css";
@@ -28,12 +35,6 @@
  * takes its height from the stage.
  */
 .blockr-graph {
-  --blockr-graph-surface: Canvas;
-  --blockr-graph-text: var(--bc-color-text-default, CanvasText);
-  --blockr-graph-muted: var(--bc-color-text-muted, color-mix(in oklab, currentColor 65%, transparent));
-  --blockr-graph-border: var(--bc-color-border-default, color-mix(in oklab, currentColor 25%, transparent));
-  --blockr-graph-accent: var(--bc-color-border-accent, #3b82f6);
-  --blockr-graph-raised: var(--bc-color-bg-raised, Canvas);
   --blockr-graph-link: color-mix(in oklab, currentColor 40%, transparent);
   position: relative;
   display: flex;
@@ -43,9 +44,7 @@
   height: 100%;
   overflow: hidden;
   outline: none;
-  color: var(--blockr-graph-text);
-  background: var(--blockr-graph-surface);
-  font-family: var(--bc-font-sans, system-ui, sans-serif);
+  font-family: var(--bk-font-sans);
 }
 
 .blockr-graph-stage {
@@ -68,23 +67,23 @@
   --xy-background-color: transparent;
   --xy-edge-stroke: var(--blockr-graph-link);
   --xy-edge-stroke-width: 1.5;
-  --xy-edge-stroke-selected: var(--blockr-graph-accent);
-  --xy-connectionline-stroke: var(--blockr-graph-accent);
+  --xy-edge-stroke-selected: var(--bk-color-primary);
+  --xy-connectionline-stroke: var(--bk-color-primary);
   --xy-connectionline-stroke-width: 1.5;
-  --xy-edge-label-background-color: var(--blockr-graph-surface);
-  --xy-edge-label-color: var(--blockr-graph-text);
-  --xy-handle-background-color: var(--blockr-graph-surface);
+  --xy-edge-label-background-color: var(--bk-color-card);
+  --xy-edge-label-color: var(--bk-color-card-foreground);
+  --xy-handle-background-color: var(--bk-color-card);
   --xy-handle-border-color: var(--blockr-graph-link);
-  --xy-selection-background-color: color-mix(in oklab, var(--blockr-graph-accent) 8%, transparent);
-  --xy-selection-border: 1px dashed var(--blockr-graph-accent);
+  --xy-selection-background-color: color-mix(in oklab, var(--bk-color-primary) 8%, transparent);
+  --xy-selection-border: 1px dashed var(--bk-color-primary);
   --xy-attribution-background-color: transparent;
 }
 
-:root[data-bc-theme="dark"] .blockr-graph {
+:root[data-bk-mode="dark"] .blockr-graph {
   color-scheme: dark;
 }
 
-:root[data-bc-theme="light"] .blockr-graph {
+:root[data-bk-mode="light"] .blockr-graph {
   color-scheme: light;
 }
 
@@ -94,8 +93,10 @@
 }
 
 /*
- * A block's node: its mark, with the status dot on the mark's upper right
- * corner, and its name below it, cut at the node's width.
+ * A block's node: its mark, with the status dot on the mark's lower right
+ * corner, and its name below it, cut at the node's width. The mark's frame
+ * takes card, under the tint of the category's colour, so that the mark is
+ * opaque over the links below it.
  */
 .blockr-graph-block {
   position: relative;
@@ -111,6 +112,7 @@
   display: inline-flex;
   flex-shrink: 0;
   border-radius: 8px;
+  background: var(--bk-color-card);
 }
 
 .blockr-graph-mark {
@@ -122,7 +124,7 @@
   height: 32px;
   border-radius: 8px;
   font-size: 18px;
-  color: var(--bc-color-category-uncategorized, #999999);
+  color: var(--bc-color-category-uncategorized);
   background: color-mix(in srgb, currentColor 18%, transparent);
 }
 
@@ -131,26 +133,30 @@
   height: 1em;
 }
 
-.blockr-graph-mark[data-category="input"] { color: var(--bc-color-category-input, #0072b2); }
-.blockr-graph-mark[data-category="transform"] { color: var(--bc-color-category-transform, #009e73); }
-.blockr-graph-mark[data-category="structured"] { color: var(--bc-color-category-structured, #56b4e9); }
-.blockr-graph-mark[data-category="plot"] { color: var(--bc-color-category-plot, #e69f00); }
-.blockr-graph-mark[data-category="table"] { color: var(--bc-color-category-table, #cc79a7); }
-.blockr-graph-mark[data-category="model"] { color: var(--bc-color-category-model, #f0e442); }
-.blockr-graph-mark[data-category="output"] { color: var(--bc-color-category-output, #d55e00); }
-.blockr-graph-mark[data-category="utility"] { color: var(--bc-color-category-utility, #cccccc); }
+.blockr-graph-mark[data-category="input"] { color: var(--bc-color-category-input); }
+.blockr-graph-mark[data-category="transform"] { color: var(--bc-color-category-transform); }
+.blockr-graph-mark[data-category="structured"] { color: var(--bc-color-category-structured); }
+.blockr-graph-mark[data-category="plot"] { color: var(--bc-color-category-plot); }
+.blockr-graph-mark[data-category="table"] { color: var(--bc-color-category-table); }
+.blockr-graph-mark[data-category="model"] { color: var(--bc-color-category-model); }
+.blockr-graph-mark[data-category="output"] { color: var(--bc-color-category-output); }
+.blockr-graph-mark[data-category="utility"] { color: var(--bc-color-category-utility); }
 
 /*
- * A selected block shows a ring around its mark, and so does the block that
- * has the keyboard's focus.
+ * A selected block shows a ring around its mark, in the colour of what is
+ * selected, and so does the block that has the keyboard's focus, in the
+ * colour of the focus ring.
  */
-.blockr-graph-block[data-selected] .blockr-graph-mark-frame,
+.blockr-graph-block[data-selected] .blockr-graph-mark-frame {
+  box-shadow: 0 0 0 2px var(--bk-color-card), 0 0 0 4px var(--bk-color-primary);
+}
+
 .react-flow__node:focus-visible .blockr-graph-mark-frame {
-  box-shadow: 0 0 0 2px var(--blockr-graph-surface), 0 0 0 4px var(--blockr-graph-accent);
+  box-shadow: 0 0 0 2px var(--bk-color-card), 0 0 0 4px var(--bk-color-ring);
 }
 
 .blockr-graph-block[data-selected] .blockr-graph-name {
-  color: var(--blockr-graph-accent);
+  color: var(--bk-color-primary-text);
 }
 
 /*
@@ -176,11 +182,10 @@
  * The status dot, as the dock's card draws it, but on the mark's lower right
  * corner, which no handle comes near, since the handles on the bottom sit
  * below the block's name: an 8px dot with a 2px ring in the colour of the
- * canvas's surface, or a ring of 1.5px inside the dot for a block that is
- * waiting or unevaluated.
- * The colour of a status is core's, as --bc-color-status-failed. Each falls
- * back to core's value of it under the light theme, which is that of the
- * token that the table of the status dot names
+ * node, card, or a ring of 1.5px inside the dot for a block that is waiting or
+ * unevaluated.
+ * The colour of a status is core's, as --bc-color-status-failed, which core
+ * gives the value of the token that the table of the status dot names
  * (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.2.7#the-status-dot).
  */
 .blockr-graph-dot {
@@ -191,26 +196,26 @@
   height: 8px;
   border-radius: 50%;
   background-color: currentColor;
-  box-shadow: 0 0 0 2px var(--blockr-graph-surface);
+  box-shadow: 0 0 0 2px var(--bk-color-card);
 }
 
 .blockr-graph-dot[data-ring] {
-  background-color: var(--blockr-graph-surface);
-  box-shadow: inset 0 0 0 1.5px currentColor, 0 0 0 2px var(--blockr-graph-surface);
+  background-color: var(--bk-color-card);
+  box-shadow: inset 0 0 0 1.5px currentColor, 0 0 0 2px var(--bk-color-card);
 }
 
-.blockr-graph-dot[data-status="stale"] { color: var(--bc-color-status-stale, #6b7280); }
-.blockr-graph-dot[data-status="waiting"] { color: var(--bc-color-status-waiting, #d97706); }
-.blockr-graph-dot[data-status="invalid"] { color: var(--bc-color-status-invalid, #d97706); }
-.blockr-graph-dot[data-status="failed"] { color: var(--bc-color-status-failed, #dc2626); }
-.blockr-graph-dot[data-status="ready"] { color: var(--bc-color-status-ready, #16a34a); }
-.blockr-graph-dot[data-status="unevaluated"] { color: var(--bc-color-status-unevaluated, #6b7280); }
+.blockr-graph-dot[data-status="stale"] { color: var(--bc-color-status-stale); }
+.blockr-graph-dot[data-status="waiting"] { color: var(--bc-color-status-waiting); }
+.blockr-graph-dot[data-status="invalid"] { color: var(--bc-color-status-invalid); }
+.blockr-graph-dot[data-status="failed"] { color: var(--bc-color-status-failed); }
+.blockr-graph-dot[data-status="ready"] { color: var(--bc-color-status-ready); }
+.blockr-graph-dot[data-status="unevaluated"] { color: var(--bc-color-status-unevaluated); }
 
 /*
  * A handle, 8px across, where the node gives it. It takes the pointer within
  * its size and 4px around it, and never over the node's body, so that a press
  * on the node lands on the node. While the pointer is over it, it grows and
- * takes the accent colour, above the handles beside it where its side is
+ * takes the colour of primary, above the handles beside it where its side is
  * crowded. React Flow keeps its crosshair over a handle that takes links.
  */
 .blockr-graph .blockr-graph-handle {
@@ -220,7 +225,7 @@
   transform: none;
   pointer-events: all;
   border: 1.5px solid var(--blockr-graph-link);
-  background-color: var(--blockr-graph-surface);
+  background-color: var(--bk-color-card);
   transition: transform 80ms ease-out;
 }
 
@@ -233,8 +238,8 @@
 .blockr-graph .blockr-graph-handle:hover {
   z-index: 1;
   transform: scale(1.5);
-  border-color: var(--blockr-graph-accent);
-  background-color: var(--blockr-graph-accent);
+  border-color: var(--bk-color-primary);
+  background-color: var(--bk-color-primary);
 }
 
 .blockr-graph .blockr-graph-stack-handle {
@@ -252,17 +257,17 @@
 }
 
 .blockr-graph .react-flow__edge.selected .blockr-graph-arrow {
-  fill: var(--blockr-graph-accent);
+  fill: var(--bk-color-primary);
 }
 
 .blockr-graph .react-flow__edge:hover .react-flow__edge-path,
 .blockr-graph .react-flow__edge.blockr-graph-hovered .react-flow__edge-path {
-  stroke: var(--blockr-graph-muted);
+  stroke: var(--bk-color-muted-foreground);
 }
 
 .blockr-graph .react-flow__edge:hover .blockr-graph-arrow,
 .blockr-graph .react-flow__edge.blockr-graph-hovered .blockr-graph-arrow {
-  fill: var(--blockr-graph-muted);
+  fill: var(--bk-color-muted-foreground);
 }
 
 .blockr-graph .react-flow__edge-textwrapper {
@@ -300,7 +305,7 @@
 }
 
 .blockr-graph-stack[data-selected] {
-  outline: 2px solid var(--blockr-graph-accent);
+  outline: 2px solid var(--bk-color-primary);
   outline-offset: 2px;
 }
 
@@ -338,7 +343,7 @@
 }
 
 .blockr-graph-stack-count {
-  color: var(--blockr-graph-muted);
+  color: var(--bk-color-muted-foreground);
   font-size: 11px;
   line-height: 14px;
 }
@@ -364,7 +369,10 @@
 
 /*
  * The toolbar, in a column at the canvas's top left, and the panel of search
- * and the outline beside it.
+ * and the outline beside it, both in the colours of popover. A control of the
+ * toolbar draws its icon in the colour of the toolbar's text, and in that of
+ * accent's text on the fill of accent that blockr.ui's button takes under the
+ * pointer.
  */
 .blockr-graph-tools {
   position: absolute;
@@ -385,10 +393,11 @@
 .blockr-graph-toolbar {
   gap: 2px;
   padding: 3px;
-  border: 1px solid var(--blockr-graph-border);
+  border: 1px solid var(--bk-color-border);
   border-radius: 8px;
-  background: var(--blockr-graph-raised);
-  box-shadow: 0 1px 3px color-mix(in oklab, CanvasText 12%, transparent);
+  background: var(--bk-color-popover);
+  color: var(--bk-color-popover-foreground);
+  box-shadow: var(--bk-shadow-sm);
 }
 
 .blockr-graph .blockr-graph-control {
@@ -396,11 +405,17 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  color: var(--blockr-graph-text);
+  color: var(--bk-color-popover-foreground);
+}
+
+@media (hover: hover) {
+  .blockr-graph .blockr-graph-control:hover {
+    color: var(--bk-color-accent-foreground);
+  }
 }
 
 .blockr-graph .blockr-graph-control[aria-expanded="true"] {
-  background: color-mix(in oklab, var(--blockr-graph-accent) 14%, transparent);
+  background: color-mix(in oklab, var(--bk-color-primary) 14%, transparent);
 }
 
 .blockr-graph-icon {
@@ -431,15 +446,16 @@
   max-height: 100%;
   padding: 8px;
   overflow: auto;
-  border: 1px solid var(--blockr-graph-border);
+  border: 1px solid var(--bk-color-border);
   border-radius: 8px;
-  background: var(--blockr-graph-raised);
-  box-shadow: 0 2px 8px color-mix(in oklab, CanvasText 14%, transparent);
+  background: var(--bk-color-popover);
+  color: var(--bk-color-popover-foreground);
+  box-shadow: var(--bk-shadow-md);
 }
 
 .blockr-graph-search-heading {
   margin: 4px 0 0;
-  color: var(--blockr-graph-muted);
+  color: var(--bk-color-muted-foreground);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -448,7 +464,7 @@
 
 .blockr-graph-search-none {
   margin: 0;
-  color: var(--blockr-graph-muted);
+  color: var(--bk-color-muted-foreground);
   font-size: 13px;
 }
 
@@ -477,6 +493,7 @@
  * advanced action, which scrolls within the panel. It takes at most half of
  * the element's height, and the stage the rest (../../ui/panel-place.ts). The
  * advanced action keeps the width of a form, however wide the element is.
+ * The panel takes the colours of popover, as the toolbar does.
  */
 .blockr-graph-panel {
   display: flex;
@@ -485,8 +502,9 @@
   box-sizing: border-box;
   max-height: 50%;
   overflow: hidden;
-  border-top: 1px solid var(--blockr-graph-border);
-  background: var(--blockr-graph-raised);
+  border-top: 1px solid var(--bk-color-border);
+  background: var(--bk-color-popover);
+  color: var(--bk-color-popover-foreground);
   outline: none;
 }
 
@@ -495,7 +513,7 @@
   align-items: center;
   gap: 2px;
   padding: 6px 6px 6px 12px;
-  border-bottom: 1px solid var(--blockr-graph-border);
+  border-bottom: 1px solid var(--bk-color-border);
 }
 
 .blockr-graph-panel-title {
@@ -536,7 +554,7 @@
   z-index: 4;
   margin: 0;
   transform: translate(-50%, -50%);
-  color: var(--blockr-graph-muted);
+  color: var(--bk-color-muted-foreground);
   font-size: 14px;
   text-align: center;
   pointer-events: none;
@@ -549,11 +567,11 @@
   max-width: 320px;
   padding: 6px 10px;
   transform: translate(8px, 8px);
-  border: 1px solid var(--bc-color-border-danger, #ef4444);
+  border: 1px solid var(--bk-color-destructive);
   border-radius: 6px;
-  background: var(--blockr-graph-raised);
-  color: var(--bc-color-text-danger, #b91c1c);
+  background: var(--bk-color-popover);
+  color: var(--bk-color-destructive-text);
   font-size: 13px;
   white-space: pre-wrap;
-  box-shadow: 0 2px 8px color-mix(in oklab, CanvasText 14%, transparent);
+  box-shadow: var(--bk-shadow-md);
 }

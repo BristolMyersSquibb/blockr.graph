@@ -1,12 +1,13 @@
-// The tooltips of the DAG's handles and status dots: core's TooltipTrigger and
-// Tooltip, which show the tooltip after the pointer rests on the element for a
-// moment, and hide it as the pointer leaves the element or presses on it.
+// The tooltips of the DAG's handles and status dots: blockr.ui's
+// TooltipTrigger and Tooltip, which show the tooltip after the pointer rests on
+// the element for a moment, and hide it as the pointer leaves the element or
+// presses on it.
 // React Aria's Focusable passes the trigger's handlers to the element, beside
 // the element's own, as a handle keeps React Flow's, which start a link as the
 // user presses on it.
 // No tooltip shows for a touch, which has no hover.
 
-import { Focusable, Tooltip, TooltipTrigger } from "@blockr/core/react";
+import { Focusable, Tooltip, TooltipTrigger } from "@blockr/ui";
 import type { ComponentProps, ReactElement } from "react";
 
 // How long the pointer rests on an element before its tooltip shows.

@@ -29,7 +29,7 @@ Suggests:
     rmarkdown,
     quarto
 Remotes:
-    BristolMyersSquibb/blockr.core@js-state,
+    BristolMyersSquibb/blockr.core@866-blockr-ui,
     BristolMyersSquibb/blockr.dock@js-state
 Config/testthat/edition: 3
 VignetteBuilder: quarto

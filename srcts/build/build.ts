@@ -5,12 +5,14 @@
 //   index.tsx, is bundled into <name>.js, as the module of the DAG plugin's
 //   class is into graph.js.
 // - Each takes the build preset that blockr.core ships as `@blockr/core/build`,
-//   which leaves the imports that the page's import map names, such as React
-//   and core's React SDK, imports. So no bundle holds any of them.
+//   which extends blockr.ui's, `@blockr/ui/build`, with core's own entry
+//   points. It leaves the imports that the page's import map names, such as
+//   React, blockr.ui's components and core's React SDK, imports. So no bundle
+//   holds any of them.
 // - An index.css beside a module is its stylesheet, bundled, unminified, into
 //   <name>.css, as the DAG's into graph.css. R serves it beside the module.
 // - The builds of the modules and of their stylesheets take the vendor check
-//   that blockr.core ships beside the preset. It fails the build where one of
+//   that blockr.ui ships beside its preset. It fails the build where one of
 //   those files would hold code from node_modules, so that it holds only the
 //   DAG's own code, unminified, and a diff of inst/js shows what an edit of
 //   srcts changed.
@@ -52,9 +54,19 @@
 //   graph.schema.json, where R finds it. The DAG's module imports the file as
 //   the schema of its class's state, so the build writes it before it
 //   bundles.
+// - The build runs the check of the Tailwind half of blockr.ui's preset,
+//   themeCheck() from `@blockr/ui/build`, on the stylesheets that it writes of
+//   the modules, as graph.css, and on the DAG's code in srcts. The DAG writes
+//   plain CSS and runs no Tailwind, so the check is what keeps its stylesheet
+//   to the theme variables
+//   (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.7.4#prefixes).
+//   It fails the build where a stylesheet reads a variable of blockr.ui's
+//   that the list of theme variables lacks or sets a variable under --bk-, and
+//   where the code names a class under blockr.ui's prefix or a class that the
+//   preset drops, such as one of a colour of Tailwind's palette.
 // - What each file that the build writes imports up front goes into
-//   preload.json, by staticImports() from `@blockr/core/build`, as core's
-//   build writes its own.
+//   preload.json, by staticImports() from `@blockr/ui/build`, as core's build
+//   writes its own.
 //   R names those files in the head of the page that it serves.
 //   So the browser fetches them as the page loads, rather than each once the
 //   file that imports it has loaded.
@@ -70,7 +82,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { preset, staticImports, vendorCheck } from "@blockr/core/build";
+import { preset } from "@blockr/core/build";
+import { staticImports, themeCheck, vendorCheck } from "@blockr/ui/build";
 import * as esbuild from "esbuild";
 import { createGenerator } from "ts-json-schema-generator";
 
@@ -166,13 +179,29 @@ export async function build(root: string): Promise<string[]> {
     throw new Error("esbuild warned, as printed above");
   }
 
+  const written = results.flatMap((result) => Object.keys(result.metafile.outputs));
+  await themeCheck({
+    stylesheets: written.filter((file) => file.endsWith(".css")).map((file) => join(root, file)),
+    code: await codeFiles(join(root, "srcts")),
+  });
+
   return [
-    ...results.flatMap((result) => Object.keys(result.metafile.outputs)),
+    ...written,
     ...[...vendored.values()].map(({ file }) => relative(root, join(out, file))),
     ...(licensed === undefined ? [] : [licensed]),
     ...schemas,
     await preloadList(root, out, results.map((result) => result.metafile), vendored.values()),
   ].sort();
+}
+
+// The DAG's code, each .ts and .tsx file in `src`, in which themeCheck() looks
+// for the classes that it names, as Tailwind would scan it for them.
+async function codeFiles(src: string): Promise<string[]> {
+  const files = await readdir(src, { recursive: true });
+  return files
+    .filter((file) => /\.tsx?$/.test(file))
+    .map((file) => join(src, file))
+    .sort();
 }
 
 // Writes what the files in `out` import up front into `out`, as preload.json,
