@@ -11,6 +11,7 @@ export {
   changed,
   expandedBox,
   merged,
+  NO_CHANGES,
   nodeChanges,
   shownBox,
   stackBoxAt,

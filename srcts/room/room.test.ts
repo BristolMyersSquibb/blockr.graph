@@ -10,7 +10,7 @@ import type { Box } from "../geometry/index.ts";
 import { layOut, loadDagre } from "../layout/index.ts";
 import type { Dagre } from "../layout/index.ts";
 import type { Layout } from "../state/index.ts";
-import { intruders, layeredBoard, lcg, newlyClose, SHAPES, stackSpecs, stateOf, swapped, withStacks, withState } from "../testing/index.ts";
+import { intruders, layeredBoard, lcg, newlyClose, reshaped, SHAPES, stackSpecs, stateOf, swapped, withStacks, withState } from "../testing/index.ts";
 import { closePairs, makeRoom, project } from "./index.ts";
 
 describe("the sweep", () => {
@@ -123,5 +123,6 @@ describe("making room for what Repulsion places", () => {
     expect(newlyClose(before, after, gap)).toEqual([]);
     expect(intruders(after)).toEqual([]);
     expect(swapped(started, after, gap)).toEqual([]);
+    expect(reshaped(started, after)).toEqual([]);
   });
 });

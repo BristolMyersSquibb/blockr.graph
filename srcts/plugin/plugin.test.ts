@@ -3,10 +3,13 @@
 
 import type { Board, Delta } from "@blockr/core";
 import { describe, expect, test } from "vitest";
-import { loadDagre } from "../layout/index.ts";
+import { collapse, expand } from "../collapse/index.ts";
+import { canvasOf, distance, gapOf, shownBox } from "../geometry/index.ts";
+import { layOut, loadDagre } from "../layout/index.ts";
 import { GRAPH, isPoint } from "../state/index.ts";
-import type { Point } from "../state/index.ts";
-import { boardOf, stateOf, withState } from "../testing/index.ts";
+import type { Layout, Point } from "../state/index.ts";
+import { boardOf, folded, intruders, layeredBoard, reshaped, SHAPES, stackSpecs, stateOf, withStacks, withState } from "../testing/index.ts";
+import type { BoardSpec } from "../testing/index.ts";
 import { afterStep, starting, update } from "./index.ts";
 
 const at = (x: number, y: number): Point => ({ x, y });
@@ -97,10 +100,10 @@ describe("the class's afterStep", () => {
   });
 
   test("gives a stack that the step leaves without blocks a position, where its box was, in place of its collapse", () => {
-    const state = { positions: { a: at(0, 0), b: at(100, 0) }, stacks: { s: { collapsed: 1, moved: none } } };
+    const state = { positions: { a: at(0, 0), b: at(400, 0) }, stacks: { s: { collapsed: 1, moved: none } } };
     const before = boardOf({ blocks: { a: "A", b: "B" }, stacks: { s: ["a", "b"] }, state });
     const board = boardOf({ blocks: { a: "A", b: "B" }, stacks: { s: [] }, state });
-    expect(afterStep(board, before, GRAPH)).toEqual([{ op: "replace", path: path("stacks", "s"), value: at(50, 0) }]);
+    expect(afterStep(board, before, GRAPH)).toEqual([{ op: "replace", path: path("stacks", "s"), value: at(200, 0) }]);
   });
 
   test("drops the position of a stack that holds a block", () => {
@@ -119,6 +122,139 @@ describe("the class's afterStep", () => {
   test("leaves a board without the DAG's state alone", () => {
     const board = { ...boardOf({ blocks: { a: "A" } }), plugins: {} };
     expect(afterStep(board, board, GRAPH)).toEqual([]);
+  });
+});
+
+describe("making room around the stacks that a step grows or forms", () => {
+  const gap = gapOf("normal");
+
+  // The board after the step, with the patches of afterStep applied.
+  const stepped = (board: Board, before: Board) => patched(board, afterStep(board, before, GRAPH));
+  const positions = (board: Board, blocks: readonly string[]) => blocks.map((block) => stateOf(board).positions[block]);
+
+  // The example `stacks`: a chain of Dataset, Head and Rbind on the left, and
+  // the stack Joins on the right.
+  const example: BoardSpec = {
+    blocks: { iris: "Dataset", head: "Head", bound: "Rbind", bod: "Dataset", cw: "Dataset", joined: "Merge" },
+    links: [
+      ["iris", "head"],
+      ["head", "bound"],
+      ["bod", "joined"],
+      ["cw", "joined"],
+    ],
+    stacks: { joins: ["bod", "cw", "joined"] },
+    state: { positions: { iris: at(0, 0), head: at(0, 150), bound: at(0, 300), bod: at(300, 0), cw: at(450, 0), joined: at(375, 150) } },
+  };
+
+  test("moves the blocks that a stack's box grows over off it, and leaves the stack where it is", () => {
+    const before = boardOf(example);
+    const board = boardOf({ ...example, stacks: { joins: ["bod", "cw", "joined", "bound"] } });
+    expect(intruders(canvasOf(board, stateOf(board)))).toEqual([
+      ["block:iris", "joins"],
+      ["block:head", "joins"],
+    ]);
+    const after = stepped(board, before);
+    expect(intruders(canvasOf(after, stateOf(after)), gap - 0.5)).toEqual([]);
+    const joins = ["bod", "cw", "joined", "bound"];
+    expect(positions(after, joins)).toEqual(positions(board, joins));
+    expect(reshaped(canvasOf(before, stateOf(before)), canvasOf(after, stateOf(after)))).toEqual([]);
+  });
+
+  test("moves a stack that a stack's box grows towards off it, as one", () => {
+    const spec: BoardSpec = {
+      blocks: { a: "A", b: "B", c: "C", d: "D" },
+      stacks: { s1: ["a", "b"], s2: ["c", "d"] },
+      state: { positions: { a: at(0, 0), b: at(0, 122), c: at(300, 0), d: at(300, 122) } },
+    };
+    const before = boardOf(spec);
+    const board = boardOf({ ...spec, state: { positions: { ...spec.state?.positions, b: at(200, 122) } } });
+    const after = stepped(board, before);
+    const canvas = canvasOf(after, stateOf(after));
+    const [one, two] = [shownBox(canvas, "s1"), shownBox(canvas, "s2")];
+    if (one === undefined || two === undefined) throw new Error("no box");
+    expect(distance(one, two)).toBeGreaterThan(gap - 0.5);
+    expect(positions(after, ["a", "b"])).toEqual([at(0, 0), at(200, 122)]);
+    expect(reshaped(canvasOf(board, stateOf(board)), canvas)).toEqual([]);
+    expect(stateOf(after).positions.c?.x).toBeGreaterThan(300);
+  });
+
+  test("moves what lies in the box of a stack that the step forms off it, and what lies within the gap of it", () => {
+    const spec: BoardSpec = {
+      blocks: { x: "X", y: "Y", z: "Z", w: "W" },
+      state: { positions: { x: at(0, 0), z: at(150, 0), y: at(300, 0), w: at(150, 100) } },
+    };
+    const before = boardOf(spec);
+    const board = boardOf({ ...spec, stacks: { s: ["x", "y"] } });
+    const after = stepped(board, before);
+    expect(intruders(canvasOf(after, stateOf(after)), gap - 0.5)).toEqual([]);
+    expect(positions(after, ["x", "y"])).toEqual([at(0, 0), at(300, 0)]);
+  });
+
+  test("moves the blocks of a stack that the step leaves without blocks off its box", () => {
+    const state = { positions: { a: at(0, 0), b: at(100, 0) }, stacks: { s: { collapsed: 1, moved: none } } };
+    const before = boardOf({ blocks: { a: "A", b: "B" }, stacks: { s: ["a", "b"] }, state });
+    const board = boardOf({ blocks: { a: "A", b: "B" }, stacks: { s: [] }, state });
+    const after = stepped(board, before);
+    expect(stateOf(after).stacks.s).toEqual(at(50, 0));
+    const box = shownBox(canvasOf(after, stateOf(after)), "s");
+    if (box === undefined) throw new Error("no box");
+    for (const block of ["a", "b"]) {
+      const point = stateOf(after).positions[block] ?? at(0, 0);
+      expect(distance(box, { ...point, w: 32, h: 52 })).toBeGreaterThan(gap - 0.5);
+    }
+  });
+
+  test("moves a stack aside as one, where Repulsion places a block that the step adds in its box", () => {
+    const spec: BoardSpec = {
+      blocks: { u: "U", w: "W" },
+      stacks: { s: ["u", "w"] },
+      state: { positions: { u: at(0, 0), w: at(0, 244) } },
+    };
+    const before = boardOf(spec);
+    const board = boardOf({
+      ...spec,
+      blocks: { ...spec.blocks, n: "N" },
+      links: [
+        ["u", "n"],
+        ["n", "w"],
+      ],
+    });
+    const after = stepped(board, before);
+    expect(stateOf(after).positions.n).toEqual(at(0, 122));
+    expect(intruders(canvasOf(after, stateOf(after)), gap - 0.5)).toEqual([]);
+    expect(reshaped(canvasOf(board, stateOf(board)), canvasOf(after, stateOf(after)))).toEqual([]);
+  });
+
+  test("changes nothing after a step that collapses or expands a stack, which makes room itself", () => {
+    const spec: BoardSpec = {
+      blocks: { a: "A", b: "B", c: "C", d: "D", e: "E" },
+      stacks: { s: ["a", "b"], t: ["c", "d"] },
+      state: { positions: { a: at(0, 0), b: at(0, 122), c: at(260, 0), d: at(260, 122), e: at(0, 300) } },
+    };
+    const board = boardOf(spec);
+    const closed = withState(board, folded(stateOf(board), collapse(board, stateOf(board), "s")));
+    expect(afterStep(closed, board, GRAPH)).toEqual([]);
+    const open = withState(closed, folded(stateOf(closed), expand(closed, stateOf(closed), "s")));
+    expect(afterStep(open, closed, GRAPH)).toEqual([]);
+  });
+
+  test("changes nothing after a step that lays the board out again, which keeps the gap from every stack's box", async () => {
+    const dagre = await loadDagre();
+    for (const direction of ["TB", "LR"] as const) {
+      const layout: Layout = { direction, spacing: "normal", placement: "repulsion", snap: false, snap_size: 20 };
+      const plain = layeredBoard({ ...SHAPES.square, seed: 11 });
+      const first = layOut(dagre, canvasOf(plain, stateOf(plain)), layout);
+      const stacked = withStacks(plain, stackSpecs(Object.keys(plain.blocks).length), first.positions);
+      const before = withState(stacked, { positions: first.positions, layout });
+      const laid = layOut(dagre, canvasOf(stacked, stateOf(stacked)), layout);
+      expect(afterStep(withState(stacked, { positions: laid.positions, layout }), before, GRAPH), direction).toEqual([]);
+    }
+  });
+
+  test("changes nothing after a step that leaves every stack's box as it was", () => {
+    const before = boardOf(example);
+    const board = boardOf({ ...example, state: { positions: { ...example.state?.positions, iris: at(-50, 0) } } });
+    expect(afterStep(board, before, GRAPH)).toEqual([]);
   });
 });
 
