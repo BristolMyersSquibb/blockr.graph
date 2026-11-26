@@ -5,10 +5,15 @@
 // links between those blocks, any other stack that holds a block and whose
 // blocks are all copied, and their positions.
 // The JSON board is the store's JSON board of the whole board with only
-// those, so that it records the versions of the packages and of the blocks'
-// states, by which Paste migrates them as it reads the board. It holds the
-// DAG's state with the positions of the copied blocks and of the copied
+// those, so that it records the version of each block's state and of the
+// DAG's state, by which Paste migrates them as it reads the board. It holds
+// the DAG's state with the positions of the copied blocks and of the copied
 // stacks that hold no block, and no other plugin's state and no board option.
+// Of the packages that the store's JSON board lists, it keeps those that the
+// copied blocks' classes and the DAG plugin's class come from. The list names
+// what to install, and the store lists the packages of a board that it writes
+// the same way
+// (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.1.4#files).
 // A copied stack that the DAG shows collapsed pastes expanded.
 
 import type { BlockId, Board, JsonBoard, StackId, Target } from "@blockr/core";
@@ -58,17 +63,23 @@ export function copiedBoard(json: JsonBoard, copied: Copied): JsonBoard {
   const { board } = json;
   const graph = board.plugins[GRAPH];
   const state = graph === undefined || !isGraphState(graph.state) ? undefined : graph.state;
-  return {
-    ...json,
-    board: {
-      ...board,
-      blocks: kept(board.blocks, (id) => blocks.has(id)),
-      links: kept(board.links, (_id, link) => blocks.has(link.from) && blocks.has(link.to)),
-      stacks: kept(board.stacks, (id) => stacks.has(id)),
-      options: {},
-      plugins: graph === undefined || state === undefined ? {} : { [GRAPH]: { ...graph, state: copiedState(state, blocks, stacks) } },
-    },
+  const taken: JsonBoard["board"] = {
+    ...board,
+    blocks: kept(board.blocks, (id) => blocks.has(id)),
+    links: kept(board.links, (_id, link) => blocks.has(link.from) && blocks.has(link.to)),
+    stacks: kept(board.stacks, (id) => stacks.has(id)),
+    options: {},
+    plugins: graph === undefined || state === undefined ? {} : { [GRAPH]: { ...graph, state: copiedState(state, blocks, stacks) } },
   };
+  return { ...json, packages: packagesOf(taken, json.packages), board: taken };
+}
+
+// The entries of `packages` for the packages that the board's block classes
+// and plugin classes come from. The id of a class starts with the name of its
+// package and a "-", and the name of a package holds no "-".
+function packagesOf(board: JsonBoard["board"], packages: Readonly<Record<string, string>>): Record<string, string> {
+  const ids = [...Object.values(board.blocks).map((block) => block.registry_id), ...Object.keys(board.plugins)];
+  return kept(packages, (pkg) => ids.some((id) => id.startsWith(`${pkg}-`)));
 }
 
 // The DAG's state with the positions of the copied blocks and of the copied

@@ -1,7 +1,7 @@
 // What the DAG's Copy and Cut take of their target, and the JSON board that
 // Copy writes (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#the-dags-board-actions).
 
-import type { JsonBoard } from "@blockr/core";
+import type { JsonBoard, Target } from "@blockr/core";
 import { describe, expect, test } from "vitest";
 import { GRAPH } from "../state/index.ts";
 import type { GraphState } from "../state/index.ts";
@@ -50,12 +50,19 @@ describe("what Copy takes", () => {
 });
 
 describe("the JSON board that Copy writes", () => {
+  // The store's JSON board of the board, where e is of a class of
+  // blockr.ggplot, and a plugin of blockr.test holds state beside the DAG.
   const json: JsonBoard = {
     format: 1,
-    packages: { "blockr.core": "0.2.0", "blockr.graph": "0.2.0" },
+    packages: { "blockr.core": "0.2.0", "blockr.ggplot": "0.2.0", "blockr.graph": "0.2.0", "blockr.test": "0.1.0" },
     board: {
       ...board,
-      blocks: Object.fromEntries(Object.entries(board.blocks).map(([id, block]) => [id, { ...block, version: 1 }])),
+      blocks: Object.fromEntries(
+        Object.entries(board.blocks).map(([id, block]) => [
+          id,
+          { ...block, registry_id: id === "e" ? "blockr.ggplot-ggplot_block" : block.registry_id, version: 1 },
+        ]),
+      ),
       options: { "blockr.core-board_name": { value: "Test", version: 1 } },
       plugins: { [GRAPH]: { state: stateOf(board), version: 1 }, "blockr.test-notes": { state: { text: "" }, version: 1 } },
     },
@@ -75,11 +82,24 @@ describe("the JSON board that Copy writes", () => {
     expect(state.layout).toEqual(stateOf(board).layout);
   });
 
-  test("records the versions of the packages, and holds no other plugin's state and no board option", () => {
+  test("records the format, and holds no other plugin's state and no board option", () => {
     const copied = copiedBoard(json, copiedOf(board, { block: "c" }));
     expect(copied.format).toBe(1);
-    expect(copied.packages).toEqual(json.packages);
     expect(Object.keys(copied.board.plugins)).toEqual([GRAPH]);
     expect(copied.board.options).toEqual({});
+  });
+
+  test("lists only the packages that the copied blocks' classes and the DAG plugin's class come from", () => {
+    const packages = (target: Target, from: JsonBoard = json) => copiedBoard(from, copiedOf(board, target)).packages;
+    expect(packages({ block: "c" })).toEqual({ "blockr.core": "0.2.0", "blockr.graph": "0.2.0" });
+    expect(packages({ selection: [{ block: "c" }, { block: "e" }] })).toEqual({
+      "blockr.core": "0.2.0",
+      "blockr.ggplot": "0.2.0",
+      "blockr.graph": "0.2.0",
+    });
+    expect(packages({ stack: "s3" })).toEqual({ "blockr.graph": "0.2.0" });
+    // Where the board holds no state of the DAG, the copied board holds none
+    // either, and does not list blockr.graph.
+    expect(packages({ block: "c" }, { ...json, board: { ...json.board, plugins: {} } })).toEqual({ "blockr.core": "0.2.0" });
   });
 });
