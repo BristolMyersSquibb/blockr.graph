@@ -5,10 +5,10 @@ import type { Board, Delta } from "@blockr/core";
 import { describe, expect, test } from "vitest";
 import { collapse, expand } from "../collapse/index.ts";
 import { canvasOf, distance, gapOf, shownBox } from "../geometry/index.ts";
-import { loadDagre } from "../layout/index.ts";
+import { layOut, loadDagre } from "../layout/index.ts";
 import { GRAPH, isPoint } from "../state/index.ts";
-import type { Point } from "../state/index.ts";
-import { boardOf, folded, intruders, reshaped, stateOf, withState } from "../testing/index.ts";
+import type { Layout, Point } from "../state/index.ts";
+import { boardOf, folded, intruders, layeredBoard, reshaped, SHAPES, stackSpecs, stateOf, withStacks, withState } from "../testing/index.ts";
 import type { BoardSpec } from "../testing/index.ts";
 import { afterStep, starting, update } from "./index.ts";
 
@@ -236,6 +236,19 @@ describe("making room around the stacks that a step grows or forms", () => {
     expect(afterStep(closed, board, GRAPH)).toEqual([]);
     const open = withState(closed, folded(stateOf(closed), expand(closed, stateOf(closed), "s")));
     expect(afterStep(open, closed, GRAPH)).toEqual([]);
+  });
+
+  test("changes nothing after a step that lays the board out again, which keeps the gap from every stack's box", async () => {
+    const dagre = await loadDagre();
+    for (const direction of ["TB", "LR"] as const) {
+      const layout: Layout = { direction, spacing: "normal", placement: "repulsion", snap: false, snap_size: 20 };
+      const plain = layeredBoard({ ...SHAPES.square, seed: 11 });
+      const first = layOut(dagre, canvasOf(plain, stateOf(plain)), layout);
+      const stacked = withStacks(plain, stackSpecs(Object.keys(plain.blocks).length), first.positions);
+      const before = withState(stacked, { positions: first.positions, layout });
+      const laid = layOut(dagre, canvasOf(stacked, stateOf(stacked)), layout);
+      expect(afterStep(withState(stacked, { positions: laid.positions, layout }), before, GRAPH), direction).toEqual([]);
+    }
   });
 
   test("changes nothing after a step that leaves every stack's box as it was", () => {

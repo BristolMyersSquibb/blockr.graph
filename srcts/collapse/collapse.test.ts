@@ -8,11 +8,11 @@
 
 import type { Board } from "@blockr/core";
 import { beforeAll, describe, expect, test } from "vitest";
-import { canvasOf, gapOf } from "../geometry/index.ts";
+import { canvasOf, distance, gapOf, shownBox } from "../geometry/index.ts";
 import { layOut, loadDagre } from "../layout/index.ts";
 import type { Dagre } from "../layout/index.ts";
 import type { Layout } from "../state/index.ts";
-import { folded, furthest, intruders, layeredBoard, lcg, newlyClose, reshaped, SHAPES, stackSpecs, stateOf, swapped, withStacks, withState } from "../testing/index.ts";
+import { boardOf, folded, furthest, intruders, layeredBoard, lcg, newlyClose, reshaped, SHAPES, stackSpecs, stateOf, swapped, withStacks, withState } from "../testing/index.ts";
 import { collapse, collapses, expand } from "./index.ts";
 
 let dagre: Dagre;
@@ -87,4 +87,21 @@ describe.each(layouts)("collapsing and expanding stacks laid out $direction", (l
       expect(furthest(start.positions, state.positions, Object.keys(board.blocks)), `run ${String(run)}`).toBeLessThan(1);
     }
   });
+});
+
+test("moves another stack that lies in the box of a stack that expands out of it as one", () => {
+  const board = boardOf({
+    blocks: { a: "A", b: "B", c: "C", d: "D" },
+    stacks: { s: ["a", "b"], t: ["c", "d"] },
+    state: {
+      positions: { a: { x: 0, y: 0 }, b: { x: 300, y: 200 }, c: { x: 20, y: 100 }, d: { x: 150, y: 220 } },
+      stacks: { s: { collapsed: 1, moved: { positions: {}, stacks: {} } } },
+    },
+  });
+  const open = withState(board, folded(stateOf(board), expand(board, stateOf(board), "s")));
+  const canvas = canvasOf(open, stateOf(open));
+  const [s, t] = [shownBox(canvas, "s"), shownBox(canvas, "t")];
+  if (s === undefined || t === undefined) throw new Error("no box");
+  expect(distance(s, t)).toBeGreaterThan(gapOf("normal") - 0.5);
+  expect(reshaped(canvasOf(board, stateOf(board)), canvas)).toEqual([]);
 });
