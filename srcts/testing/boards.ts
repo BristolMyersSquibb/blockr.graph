@@ -4,8 +4,9 @@
 // notes).
 
 import type { BlockId, Board, Link, LinkId, Stack, StackId } from "@blockr/core";
+import type { Folded } from "../collapse/index.ts";
 import { defaultState, GRAPH } from "../state/index.ts";
-import type { GraphState, Point } from "../state/index.ts";
+import type { GraphState, Point, StackEntry } from "../state/index.ts";
 
 // A board by its blocks' names, its links as pairs of block ids, its stacks
 // as lists of block ids, and the DAG's state, the default where left out.
@@ -37,6 +38,16 @@ export function withState(board: Board, state: Partial<GraphState>): Board {
 // The DAG's state on a board that boardOf() made.
 export function stateOf(board: Board): GraphState {
   return board.plugins[GRAPH] as GraphState;
+}
+
+// The DAG's state after a collapse or an expand.
+export function folded(state: GraphState, { changes, entries }: Folded): GraphState {
+  const stacks: Record<StackId, StackEntry> = { ...state.stacks, ...changes.points };
+  for (const [id, entry] of Object.entries(entries)) {
+    if (entry === null) Reflect.deleteProperty(stacks, id);
+    else stacks[id] = entry;
+  }
+  return { ...state, positions: { ...state.positions, ...changes.positions }, stacks };
 }
 
 // A generator of numbers from 0 to 1 that gives the same numbers for the same

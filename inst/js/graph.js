@@ -587,6 +587,7 @@ function canvasNodes(canvas) {
   }
   return nodes;
 }
+var NO_CHANGES = { positions: {}, points: {} };
 function nodeChanges(canvas, node, box) {
   const point = { x: box.x, y: box.y };
   if (node.kind === "block") return { positions: { [node.id]: point }, points: {} };
@@ -885,9 +886,9 @@ var SIGMA = 3;
 var LEAST = 0.5;
 function closeUp(canvas, stack2, gap) {
   const full = expandedBox(canvas, stack2);
-  if (full === void 0) return { positions: {}, points: {} };
+  if (full === void 0) return NO_CHANGES;
   const small = stackBoxAt(full);
-  const nodes = canvasNodes(canvas).filter((node) => node.stack !== stack2);
+  const nodes = roomNodes(canvas).filter((node) => node.stack !== stack2);
   const spread = Math.max(gap, SIGMA * Math.max(full.w - small.w, full.h - small.h) / 2);
   const targets = nodes.map(({ box }) => {
     const [vx, vy] = [box.x - full.x, box.y - full.y];
@@ -904,20 +905,48 @@ function closeUp(canvas, stack2, gap) {
 }
 function clearBox(canvas, stack2, gap) {
   const full = expandedBox(canvas, stack2);
-  if (full === void 0) return { positions: {}, points: {} };
-  const nodes = canvasNodes(canvas).filter((node) => node.stack !== stack2);
+  if (full === void 0) return NO_CHANGES;
+  const nodes = roomNodes(canvas).filter((node) => node.stack !== stack2);
   const bodies = [...nodes.map((node) => bodyOf(node)), fixedBox(full, "inside")];
   return changesOf(canvas, nodes, project(bodies, bodies, gap));
 }
 function makeRoom(canvas, added, moved, gap) {
-  const nodes = canvasNodes(canvas);
+  const holds2 = (stack2, of) => (canvas.board.stacks[stack2]?.blocks ?? []).some((block) => of.has(block));
+  const split = new Set(Object.keys(canvas.board.stacks).filter((stack2) => !canvas.collapsed.has(stack2) && holds2(stack2, added.blocks)));
   const push = (node) => {
-    if (node.kind === "stack") return added.stacks.has(node.id) ? "all" : void 0;
+    if (node.kind === "stack") {
+      if (added.stacks.has(node.id) || holds2(node.id, added.blocks)) return "all";
+      return holds2(node.id, moved) ? "none" : void 0;
+    }
     if (added.blocks.has(node.id)) return "all";
     return moved.has(node.id) ? "none" : void 0;
   };
+  return pushing(canvas, roomNodes(canvas, split), push, gap);
+}
+function clearStacks(canvas, stacks, kept2, gap) {
+  const nodes = roomNodes(canvas);
+  const grown = nodes.filter((node) => node.kind === "stack" && stacks.has(node.id)).map((node) => node.box);
+  const holds2 = (stack2) => (canvas.board.stacks[stack2]?.blocks ?? []).some((block) => kept2.blocks.has(block));
+  const push = (node) => {
+    if (node.kind === "block") return kept2.blocks.has(node.id) ? "none" : void 0;
+    if (stacks.has(node.id)) return "all";
+    return kept2.stacks.has(node.id) || holds2(node.id) ? "none" : void 0;
+  };
+  const crowded = nodes.some((node) => push(node) === void 0 && grown.some((box) => overlaps(node.box, box, gap - LEAST)));
+  return crowded ? pushing(canvas, nodes, push, gap) : NO_CHANGES;
+}
+function pushing(canvas, nodes, push, gap) {
   const bodies = nodes.map((node) => bodyOf(node, push(node)));
   return changesOf(canvas, nodes, project(bodies, bodies, gap), (i) => bodies[i]?.fixed !== void 0);
+}
+function roomNodes(canvas, split = /* @__PURE__ */ new Set()) {
+  const apart2 = (stack2) => split.has(stack2) && !canvas.collapsed.has(stack2);
+  const blocks = canvasNodes(canvas).filter((node) => node.kind === "block" && (node.stack === null || apart2(node.stack)));
+  const stacks = Object.keys(canvas.board.stacks).flatMap((stack2) => {
+    const box = apart2(stack2) ? void 0 : shownBox(canvas, stack2);
+    return box === void 0 ? [] : [{ kind: "stack", id: stack2, box, stack: stack2 }];
+  });
+  return [...blocks, ...stacks];
 }
 function bodyOf(node, fixed) {
   const holder = node.kind === "block" ? node.stack : null;
@@ -1663,6 +1692,7 @@ var stackCommands = [
 var graphCommands = [...positionCommands, ...layoutCommands, ...stackCommands];
 
 // srcts/plugin/after-step.ts
+var LEAST2 = 0.5;
 function afterStep(board, before, plugin) {
   const state = graphState(board, plugin);
   if (state === void 0) return [];
@@ -1676,7 +1706,7 @@ function afterStep(board, before, plugin) {
   const moved = new Set(
     Object.keys(board.blocks).filter((block) => !added.blocks.has(block) && !samePoint(prior?.positions[block], state.positions[block]))
   );
-  const placed2 = added.blocks.size + added.stacks.size === 0 ? { positions: {}, points: {} } : placeAdded(canvasOf(board, state), added, moved, state.layout);
+  const placed2 = added.blocks.size + added.stacks.size === 0 ? NO_CHANGES : placeAdded(canvasOf(board, state), added, moved, state.layout);
   const entries = {};
   const emptied2 = /* @__PURE__ */ new Set();
   for (const [id, stack2] of Object.entries(board.stacks)) {
@@ -1690,18 +1720,58 @@ function afterStep(board, before, plugin) {
       entries[id] = null;
     }
   }
+  const points2 = Object.fromEntries(Object.entries(entries).flatMap(([id, entry]) => entry !== null && isPoint(entry) ? [[id, entry]] : []));
+  const canvas = changed(canvasOf(board, state), merged(placed2, { positions: {}, points: points2 }));
+  const grown = prior === void 0 ? /* @__PURE__ */ new Set() : grownStacks(canvasOf(before, prior), canvas);
+  const kept2 = {
+    blocks: /* @__PURE__ */ new Set([...added.blocks, ...moved]),
+    stacks: /* @__PURE__ */ new Set([...added.stacks, ...Object.keys(board.stacks).filter((id) => movedStack(prior, state, id))])
+  };
+  const room = grown.size === 0 ? NO_CHANGES : snapChanges(canvas, clearStacks(canvas, grown, kept2, gapOf(state.layout.spacing)), state.layout);
+  const changes = merged(placed2, room);
   const pushed = (ids, of) => [...ids].filter((id) => !of.has(id));
   return [
-    ...changePatches(state, placed2, plugin),
+    ...changePatches(state, changes, plugin),
     ...unmovedPatches(
       state,
-      pushed(Object.keys(placed2.positions), added.blocks),
-      pushed(Object.keys(placed2.points), added.stacks),
+      pushed(Object.keys(changes.positions), added.blocks),
+      pushed(Object.keys(changes.points), added.stacks),
       plugin,
       emptied2
     ),
     ...entryPatches(state, entries, plugin)
   ];
+}
+function movedStack(prior, state, stack2) {
+  const [was, now] = [prior?.stacks[stack2], state.stacks[stack2]];
+  return was !== void 0 && now !== void 0 && isPoint(was) && isPoint(now) && !samePoint(was, now);
+}
+function grownStacks(before, after) {
+  const grown = /* @__PURE__ */ new Set();
+  for (const [id, stack2] of Object.entries(after.board.stacks)) {
+    const now = shownBox(after, id);
+    if (now === void 0) continue;
+    const was = shownBox(before, id);
+    const filled = stack2.blocks.length > 0 !== (before.board.stacks[id]?.blocks.length ?? 0) > 0;
+    if (was === void 0 || filled || reshaped(before, after, id) && !within(now, was)) grown.add(id);
+  }
+  return grown;
+}
+function reshaped(before, after, stack2) {
+  const was = before.board.stacks[stack2]?.blocks ?? [];
+  const now = after.board.stacks[stack2]?.blocks ?? [];
+  if (was.length !== now.length || now.some((block) => !was.includes(block))) return true;
+  let by;
+  for (const block of now) {
+    const [a, b] = [boxOfBlock(before, block), boxOfBlock(after, block)];
+    if (a === void 0 || b?.w !== a.w) return true;
+    by ??= { x: b.x - a.x, y: b.y - a.y };
+    if (Math.abs(b.x - a.x - by.x) >= LEAST2 || Math.abs(b.y - a.y - by.y) >= LEAST2) return true;
+  }
+  return false;
+}
+function within(inner, outer) {
+  return Math.abs(inner.x - outer.x) + inner.w / 2 <= outer.w / 2 + LEAST2 && Math.abs(inner.y - outer.y) + inner.h / 2 <= outer.h / 2 + LEAST2;
 }
 function samePoint(a, b) {
   return a === b || a !== void 0 && a.x === b?.x && a.y === b.y;

@@ -97,7 +97,8 @@ export function shownBox(canvas: Canvas, stack: StackId): Box | undefined {
 }
 
 // A node that the DAG shows: a block in no stack or in an expanded stack, or
-// a stack that shows as one box, collapsed or holding no block.
+// a stack that shows as one box, collapsed or holding no block. Making room
+// takes an expanded stack as one node too, of its expanded box.
 export interface CanvasNode {
   readonly kind: "block" | "stack";
   // The id of the block or of the stack.
@@ -135,6 +136,9 @@ export interface Changes {
   readonly positions: Readonly<Record<BlockId, Point>>;
   readonly points: Readonly<Record<StackId, Point>>;
 }
+
+// The changes that move nothing.
+export const NO_CHANGES: Changes = { positions: {}, points: {} };
 
 // The positions that moving the node to the box sets: the block's, or for a
 // stack with blocks, collapsed or expanded, those of its blocks, which move
