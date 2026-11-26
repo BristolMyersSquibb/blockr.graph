@@ -2,19 +2,18 @@
 // both ways, against the criteria that the spike fixed before it ran
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3, notes):
 // no new pair within the gap and no block in another stack's box, no two
-// nodes within two gaps swapping sides, and every block back where it was
-// once every stack is expanded again, in whatever order they collapse and
-// expand.
+// nodes within two gaps swapping sides, the blocks of each stack moving by
+// one distance, and every block back where it was once every stack is
+// expanded again, in whatever order they collapse and expand.
 
-import type { Board, StackId } from "@blockr/core";
+import type { Board } from "@blockr/core";
 import { beforeAll, describe, expect, test } from "vitest";
 import { canvasOf, gapOf } from "../geometry/index.ts";
 import { layOut, loadDagre } from "../layout/index.ts";
 import type { Dagre } from "../layout/index.ts";
-import type { GraphState, Layout, StackEntry } from "../state/index.ts";
-import { furthest, intruders, layeredBoard, lcg, newlyClose, SHAPES, stackSpecs, stateOf, swapped, withStacks, withState } from "../testing/index.ts";
+import type { Layout } from "../state/index.ts";
+import { folded, furthest, intruders, layeredBoard, lcg, newlyClose, reshaped, SHAPES, stackSpecs, stateOf, swapped, withStacks, withState } from "../testing/index.ts";
 import { collapse, collapses, expand } from "./index.ts";
-import type { Folded } from "./index.ts";
 
 let dagre: Dagre;
 beforeAll(async () => {
@@ -28,16 +27,6 @@ function laidOut(shape: keyof typeof SHAPES, layout: Layout): Board {
   const stacked = withStacks(plain, stackSpecs(Object.keys(plain.blocks).length), first.positions);
   const laid = layOut(dagre, canvasOf(stacked, stateOf(stacked)), layout);
   return withState(stacked, { positions: laid.positions, layout });
-}
-
-// The state after the fold.
-function folded(state: GraphState, { changes, entries }: Folded): GraphState {
-  const stacks: Record<StackId, StackEntry> = { ...state.stacks, ...changes.points };
-  for (const [id, entry] of Object.entries(entries)) {
-    if (entry === null) Reflect.deleteProperty(stacks, id);
-    else stacks[id] = entry;
-  }
-  return { ...state, positions: { ...state.positions, ...changes.positions }, stacks };
 }
 
 const layouts: Layout[] = (["TB", "LR"] as const).map((direction) => ({
@@ -60,8 +49,10 @@ describe.each(layouts)("collapsing and expanding stacks laid out $direction", (l
       expect(newlyClose(before, after, gap), `collapsing ${stack}`).toEqual([]);
       expect(intruders(after), `collapsing ${stack}`).toEqual([]);
       expect(swapped(before, after, gap), `collapsing ${stack}`).toEqual([]);
+      expect(reshaped(before, after), `collapsing ${stack}`).toEqual([]);
 
       const open = folded(closed, expand(board, closed, stack));
+      expect(reshaped(after, canvasOf(board, open)), `expanding ${stack}`).toEqual([]);
       expect(furthest(start.positions, open.positions, Object.keys(board.blocks)), `expanding ${stack}`).toBeLessThan(1);
       expect(open.stacks).toEqual(start.stacks);
     }
