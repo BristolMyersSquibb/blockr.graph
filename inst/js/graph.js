@@ -3647,9 +3647,7 @@ var ui = {
 // srcts/modules/graph/index.ts
 var api = 1;
 var graph_default = {
-  state: { schema: graph_schema_default, default: defaultState },
-  update,
-  afterStep,
+  state: { schema: graph_schema_default, default: defaultState, update, afterStep },
   start,
   commands: graphCommands,
   boardActions: graphBoardActions,
