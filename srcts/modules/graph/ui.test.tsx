@@ -816,11 +816,25 @@ describe("the panel of advanced actions", () => {
     expect(panel(el)).toBeNull();
   });
 
+  test("mounts an advanced action once React has drawn the panel, since core's forms draw with flushSync(), so that React logs no error", async () => {
+    const { el, stub } = await mounted();
+    room();
+    const error = vi.spyOn(console, "error");
+    await rightClick(nodeOf(el, "b:c"));
+    await step(() => {
+      void stub.menu()?.pick("Edit inputs");
+    });
+    await vi.waitFor(() => {
+      expect(panel(el)?.textContent).toContain('The inputs of the block "Merge".');
+    });
+    expect(error).not.toHaveBeenCalledWith(expect.stringMatching(/^flushSync was called/));
+  });
+
   test("once pinned, mounts an advanced action drawn in React afresh on the block that the user selects", async () => {
     const { el, core, stub } = await mounted();
     room();
     await rightClick(nodeOf(el, "b:c"));
-    act(() => {
+    await step(() => {
       void stub.menu()?.pick("Edit inputs");
     });
     await vi.waitFor(() => {
@@ -850,13 +864,13 @@ describe("the panel of advanced actions", () => {
       expect(panel(el)).not.toBeNull();
     });
     await pointerPress(button(el, "Pin"));
-    act(() => {
+    await step(() => {
       core.selection.set([{ link: "bc" }]);
     });
     expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"bc"}');
     // A selection of several, or of an object that the board action is not
     // on, changes nothing.
-    act(() => {
+    await step(() => {
       core.selection.set([{ stack: "s1" }]);
     });
     expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"bc"}');

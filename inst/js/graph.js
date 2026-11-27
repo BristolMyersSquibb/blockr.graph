@@ -3203,9 +3203,16 @@ function PanelBody({ args, target }) {
   useLayoutEffect(() => {
     const el = body.current;
     if (el === null) return;
-    const unmount = args.mount(el, target);
+    let unmount;
+    let gone = false;
+    queueMicrotask(() => {
+      if (!gone) unmount = args.mount(el, target);
+    });
     return () => {
-      queueMicrotask(unmount);
+      gone = true;
+      queueMicrotask(() => {
+        unmount?.();
+      });
     };
   }, [args, target]);
   return /* @__PURE__ */ jsx5("div", { ref: body, className: "blockr-graph-panel-body" });
