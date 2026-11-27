@@ -34,32 +34,39 @@ test_that("the DAG takes core's dark mode in a container of the light mode", {
   app <- local_example_app("stacks")
   wait_for_dag(app)
 
-  # The dock's shell holds the DAG in the light mode of dockview's theme while
-  # core's mode is dark.
-  # The canvas then paints the dark mode's Canvas, and the toolbar is of the
-  # dark mode as well.
+  # The element that holds the DAG keeps the light mode while core's mode is
+  # dark.
+  # The DAG's element and its toolbar are then of the dark mode, and the
+  # toolbar draws in the colour of popover that blockr.ui's theme variables
+  # give the dark mode, which differs from that of the light mode.
   modes <- app$get_js(
     "(() => {
-      document.documentElement.setAttribute('data-bc-theme', 'dark');
+      const root = document.documentElement;
       const graph = document.querySelector('.blockr-graph');
+      const toolbar = document.querySelector('.blockr-graph-toolbar');
+      const painted = () => getComputedStyle(toolbar).backgroundColor;
+      root.setAttribute('data-bk-mode', 'light');
+      const light = painted();
+      root.setAttribute('data-bk-mode', 'dark');
       graph.parentElement.style.colorScheme = 'light';
       const probe = document.createElement('div');
-      probe.style.cssText = 'color-scheme: dark; background: Canvas';
+      probe.style.background = 'var(--bk-color-popover)';
       document.body.append(probe);
-      const dark = getComputedStyle(probe).backgroundColor;
+      const popover = getComputedStyle(probe).backgroundColor;
       probe.remove();
-      const toolbar = document.querySelector('.blockr-graph-toolbar');
       return {
         graph: getComputedStyle(graph).colorScheme,
         toolbar: getComputedStyle(toolbar).colorScheme,
-        painted: getComputedStyle(graph).backgroundColor === dark
+        popover: painted() === popover,
+        changed: painted() !== light
       };
     })()"
   )
 
   expect_identical(modes[["graph"]], "dark")
   expect_identical(modes[["toolbar"]], "dark")
-  expect_true(modes[["painted"]])
+  expect_true(modes[["popover"]])
+  expect_true(modes[["changed"]])
 })
 
 test_that("the DAG keeps where a drag moves a block once the drag ends", {
@@ -196,8 +203,14 @@ test_that("a link dropped on the canvas appends a block at the drop", {
   wait_for_dag(app)
 
   # A spot at the canvas's lower left, which no node covers.
+  # It keeps 60 pixels from the canvas's edge, since React Flow pans the view
+  # while the user drags a link within 40 pixels of the edge.
+  # It lies at a whole pixel, as Chrome gives the page the pointer, while the
+  # DAG's element can sit at a fraction of a pixel, below the text of core's
+  # basic frontend.
+  # So the drop lands where the test reckons it.
   dag <- box_of(app, "document.querySelector('.blockr-graph')")
-  to <- c(x = dag[["x"]] + 60, y = dag[["y"]] + dag[["height"]] - 40)
+  to <- round(c(x = dag[["x"]] + 60, y = dag[["y"]] + dag[["height"]] - 60))
   expect_identical(
     app$get_js(
       paste0(

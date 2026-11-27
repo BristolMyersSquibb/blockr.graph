@@ -8,21 +8,22 @@
 // 3. While the user has selected something, those on the selection: a + that
 //    pops out Create stack and Add to stack, then Copy, Cut and Remove.
 //
-// Each control is a button of core's React SDK with an icon, whose label is
-// its tooltip. A button of a board action shows the board action's icon, or
+// Each control is blockr.ui's Button with an icon, whose label is its
+// tooltip. A button of a board action shows the board action's icon, or
 // the DAG's own where it has none, and has the board action's label as its
 // tooltip. It opens the board action's quick action, or its advanced action
 // where it has no quick action on the target, as Create link on the board, or
 // runs it where it asks nothing (./actions.ts).
 // A + pops out a menu of the board actions that it holds, which the DAG draws
-// with core's React SDK. Picking one triggers it at the +, as its own button
+// with blockr.ui's Menu. Picking one triggers it at the +, as its own button
 // would.
 // Whatever a button opens, opens to the right of the toolbar, level with the
 // button, as the panel of search does: the + its menu, and a board action its
 // quick action (./actions.ts).
 
 import type { BoardAction, Target } from "@blockr/core";
-import { Button, Menu, MenuItem, MenuTrigger, Separator, Toolbar, Tooltip, TooltipTrigger, useBoard } from "@blockr/core/react";
+import { useBoard } from "@blockr/core/react";
+import { Button, Menu, MenuItem, MenuTrigger, Separator, Toolbar, Tooltip, TooltipTrigger } from "@blockr/ui";
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useReactFlow } from "../flow/index.ts";
@@ -150,7 +151,7 @@ function ActionButton({ action, icon, target }: { action: BoardAction; icon: str
 // A + that pops out a menu of the board actions that it holds, to its right,
 // and triggers the one that the user picks at the +. The DAG's stylesheet
 // moves the menu out to the gap that the panel of search keeps from the
-// toolbar, which core's menu takes no offset for.
+// toolbar, which blockr.ui's menu takes no offset for.
 function AddButton({ label, actions, target }: { label: string; actions: readonly BoardAction[]; target: Target }): ReactElement {
   const { actions: graph } = useGraph();
   const button = useRef<HTMLButtonElement>(null);

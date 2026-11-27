@@ -13,6 +13,7 @@
 import type { CoreApi, JsonBoard } from "@blockr/core";
 import { HELLO, stubCore } from "@blockr/core/stubs";
 import type { StubCore } from "@blockr/core/stubs";
+import { find, menuItem, menuItems, openMenu, pointerPress, rowOf, rowTexts, step, type } from "@blockr/ui/stubs";
 import { act } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { BLOCK_HEIGHT, blockWidth } from "../../geometry/index.ts";
@@ -120,13 +121,6 @@ async function click(target: Element, init: MouseEventInit = {}): Promise<void> 
   });
 }
 
-async function press(button: HTMLElement): Promise<void> {
-  await act(async () => {
-    button.click();
-    await Promise.resolve();
-  });
-}
-
 function button(el: HTMLElement, label: string): HTMLElement {
   const found = el.querySelector<HTMLElement>(`button[aria-label="${label}"]`);
   if (found === null) throw new Error(`No button ${label}`);
@@ -152,7 +146,7 @@ describe("the DAG's canvas", () => {
     const { el } = await mounted();
     const s1 = nodeOf(el, "s:s1").querySelector<HTMLElement>(".blockr-graph-stack");
     expect(s1?.dataset.shows).toBe("expanded");
-    expect(s1?.style.getPropertyValue("--blockr-graph-stack-color")).toBe("var(--bc-color-border-default)");
+    expect(s1?.style.getPropertyValue("--blockr-graph-stack-color")).toBe("var(--bk-color-border)");
     expect(s1?.querySelector(".blockr-graph-stack-name")?.textContent).toBe("Input");
   });
 
@@ -266,7 +260,7 @@ describe("a stack", () => {
 
   test("collapses through the button on its box", async () => {
     const { el, core } = await mounted();
-    await press(button(el, "Collapse Input"));
+    await pointerPress(button(el, "Collapse Input"));
     await vi.waitFor(() => {
       expect((core.store.board().plugins[GRAPH] as GraphState).stacks.s1).toMatchObject({ collapsed: 1 });
     });
@@ -337,53 +331,45 @@ describe("a handle", () => {
 });
 
 describe("search and the outline", () => {
-  function rows(el: HTMLElement): string[] {
-    return [...el.querySelectorAll<HTMLElement>(".blockr-graph-search [role=row]")].map((row) => row.textContent.trim());
-  }
-
-  async function type(input: HTMLInputElement, text: string): Promise<void> {
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, text);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      await Promise.resolve();
-    });
+  // The panel of search and the outline.
+  function searchPanel(el: HTMLElement): HTMLElement {
+    return find(el, ".blockr-graph-search");
   }
 
   function field(el: HTMLElement): HTMLInputElement {
-    const input = el.querySelector<HTMLInputElement>(".blockr-graph-search input");
-    if (input === null) throw new Error("No search field");
-    return input;
+    return find(searchPanel(el), "input", HTMLInputElement);
   }
 
-  function row(el: HTMLElement, text: string): HTMLElement {
-    const found = [...el.querySelectorAll<HTMLElement>(".blockr-graph-search [role=row]")].find((each) => each.textContent.trim() === text);
-    if (found === undefined) throw new Error(`No row ${text}`);
-    return found;
+  // Types the text into the field of search, as a user does.
+  async function search(el: HTMLElement, text: string): Promise<void> {
+    await step(() => {
+      type(field(el), text);
+    });
   }
 
   test("lists each stack with its blocks, and then the blocks in no stack, as the toolbar's button opens it", async () => {
     const { el } = await mounted();
     expect(el.querySelector(".blockr-graph-search")).toBeNull();
-    await press(button(el, "Search blocks"));
+    await pointerPress(button(el, "Search blocks"));
     expect(el.querySelector(".blockr-graph-search-heading")?.textContent).toBe("Board contents");
-    expect(rows(el)).toEqual(["Input (2)", "Iris", "Head", "Merge", "Wide sepals", "Bind", "Scatter"]);
+    expect(rowTexts(searchPanel(el))).toEqual(["Input (2)", "Iris", "Head", "Merge", "Wide sepals", "Bind", "Scatter"]);
   });
 
   test("narrows to the stacks and the blocks whose name or id holds what the user types", async () => {
     const { el } = await mounted();
-    await press(button(el, "Search blocks"));
-    await type(field(el), "in");
-    expect(rows(el)).toEqual(["Input (2)", "Bind"]);
-    await type(field(el), "zzz");
+    await pointerPress(button(el, "Search blocks"));
+    await search(el, "in");
+    expect(rowTexts(searchPanel(el))).toEqual(["Input (2)", "Bind"]);
+    await search(el, "zzz");
     expect(el.querySelector(".blockr-graph-search-none")?.textContent).toBe("No block or stack matches.");
   });
 
   test("selects and shows the block that the user picks, and closes", async () => {
     const { el, core } = await mounted();
     const show = vi.spyOn(core, "show");
-    await press(button(el, "Search blocks"));
-    await type(field(el), "merge");
-    await click(row(el, "Merge"));
+    await pointerPress(button(el, "Search blocks"));
+    await search(el, "merge");
+    await pointerPress(rowOf(searchPanel(el), "Merge"));
     await vi.waitFor(() => {
       expect(core.selection.get()).toEqual([{ block: "c" }]);
     });
@@ -394,11 +380,11 @@ describe("search and the outline", () => {
   test("expands the collapsed stack of the block that the user picks first", async () => {
     const collapsed = { s1: { collapsed: 1, moved: { positions: {}, stacks: {} } } };
     const { el, core } = await mounted(helloWith({ positions: POSITIONS, stacks: collapsed }));
-    await press(button(el, "Search blocks"));
+    await pointerPress(button(el, "Search blocks"));
     // The outline shows the stack folded, as the canvas does.
-    expect(rows(el)).toEqual(["Input (2)", "Merge", "Wide sepals", "Bind", "Scatter"]);
-    await type(field(el), "head");
-    await click(row(el, "Head"));
+    expect(rowTexts(searchPanel(el))).toEqual(["Input (2)", "Merge", "Wide sepals", "Bind", "Scatter"]);
+    await search(el, "head");
+    await pointerPress(rowOf(searchPanel(el), "Head"));
     await vi.waitFor(() => {
       expect(core.selection.get()).toEqual([{ block: "b" }]);
     });
@@ -408,7 +394,7 @@ describe("search and the outline", () => {
 
   test("closes on Escape", async () => {
     const { el } = await mounted();
-    await press(button(el, "Search blocks"));
+    await pointerPress(button(el, "Search blocks"));
     await act(async () => {
       el.querySelector(".blockr-graph-search")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       await Promise.resolve();
@@ -620,12 +606,9 @@ describe("the toolbar", () => {
 
   test("pops out the board actions of its +, and triggers the one that the user picks", async () => {
     const { el, core, stub } = await mounted();
-    await press(button(el, "Add to the board"));
-    const items = () => [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
-    expect(items().map((item) => item.textContent.trim())).toEqual(["Add block", "Create link", "Create stack"]);
-    const stack = items().find((item) => item.textContent.trim() === "Create stack");
-    if (stack === undefined) throw new Error("No item Create stack");
-    await click(stack);
+    await pointerPress(button(el, "Add to the board"));
+    expect(menuItems(openMenu("Add to the board"))).toEqual(["Add block", "Create link", "Create stack"]);
+    await pointerPress(menuItem(openMenu("Add to the board"), "Create stack"));
     // Create stack's quick action opens at the +, with the name of the stack.
     await vi.waitFor(() => {
       expect(stub.menu()?.level()?.rows.map((row) => row.label)).toEqual(["Name"]);
@@ -646,7 +629,7 @@ describe("the toolbar", () => {
       return new DOMRect(0, 0, 0, 0);
     });
     const trigger = vi.spyOn(core.boardActions, "trigger");
-    await press(button(el, "Layout"));
+    await pointerPress(button(el, "Layout"));
     // Core's menu hangs 4 px below its anchor, so its top lies at 196, 4 px
     // above the button's, as the toolbar's top lies 4 px above its first
     // button's, and 8 px to the right of the toolbar.
@@ -658,12 +641,12 @@ describe("the toolbar", () => {
 
   test("opens a board action's quick action, and runs one that asks nothing", async () => {
     const { el, core, stub } = await mounted();
-    await press(button(el, "Layout"));
+    await pointerPress(button(el, "Layout"));
     expect(stub.menu()?.level()?.title).toBe("Layout");
     act(() => {
       core.selection.set([{ block: "f" }]);
     });
-    await press(button(el, "Remove"));
+    await pointerPress(button(el, "Remove"));
     await vi.waitFor(() => {
       expect(names(core)).not.toContain("Scatter");
     });
@@ -676,7 +659,7 @@ describe("the keys", () => {
     act(() => {
       core.selection.set([{ block: "f" }]);
     });
-    await press(button(el, "Search blocks"));
+    await pointerPress(button(el, "Search blocks"));
     const field = el.querySelector(".blockr-graph-search input");
     if (field === null) throw new Error("No search field");
     await keyDown(field, { key: "Backspace" });
@@ -816,7 +799,7 @@ describe("the panel of advanced actions", () => {
     expect(panel(el)).toBeNull();
     expect(document.activeElement).toBe(frameOf(el));
     await probe(el, stub);
-    await press(button(el, "Pin"));
+    await pointerPress(button(el, "Pin"));
     await keyDown(frameOf(el), { key: "Escape" });
     expect(panel(el)).not.toBeNull();
   });
@@ -843,7 +826,7 @@ describe("the panel of advanced actions", () => {
     await vi.waitFor(() => {
       expect(panel(el)?.textContent).toContain('The inputs of the block "Merge".');
     });
-    await press(button(el, "Pin"));
+    await pointerPress(button(el, "Pin"));
     await act(async () => {
       core.selection.set([{ block: "d" }]);
       await Promise.resolve();
@@ -866,7 +849,7 @@ describe("the panel of advanced actions", () => {
     await vi.waitFor(() => {
       expect(panel(el)).not.toBeNull();
     });
-    await press(button(el, "Pin"));
+    await pointerPress(button(el, "Pin"));
     act(() => {
       core.selection.set([{ link: "bc" }]);
     });
@@ -882,7 +865,7 @@ describe("the panel of advanced actions", () => {
       expect(names(core)).toContain("Renamed");
     });
     expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"bc"}');
-    await press(button(el, "Close"));
+    await pointerPress(button(el, "Close"));
     expect(panel(el)).toBeNull();
   });
 });

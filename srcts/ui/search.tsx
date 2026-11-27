@@ -18,7 +18,8 @@
 // - Escape, a click outside the panel or a pick closes it.
 
 import type { BoardObject } from "@blockr/core";
-import { SearchField, Tree, TreeItem, useBoard } from "@blockr/core/react";
+import { useBoard } from "@blockr/core/react";
+import { SearchField, Tree, TreeItem } from "@blockr/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { useReactFlow } from "../flow/index.ts";

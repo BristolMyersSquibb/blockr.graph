@@ -140,7 +140,7 @@ export function graphActions({ core, element, toCanvas, refuse, panel }: ActionP
 }
 
 // How far below its anchor core's menu hangs: the offset of the popover of
-// core's React SDK.
+// blockr.ui, in which core's menu opens.
 const MENU_OFFSET = 4;
 
 // How far to the right of the toolbar a menu opens, as the panel of search

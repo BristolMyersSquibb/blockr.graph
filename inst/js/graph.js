@@ -1294,7 +1294,7 @@ var graphBoardActions = [
       }
       const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken));
       if (batch.length > 0) return batch;
-      if (!read.dropped.some((dropped) => "block" in dropped)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
+      if (!read.dropped.some((dropped) => "block" in dropped.about)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
       return void 0;
     }
   },
@@ -2469,7 +2469,8 @@ function joiningBlocks(board, joined) {
 }
 
 // srcts/ui/nodes.tsx
-import { Button, useNotified, useStatus } from "@blockr/core/react";
+import { useNotified, useStatus } from "@blockr/core/react";
+import { Button } from "@blockr/ui";
 import { memo as memo2 } from "react";
 
 // srcts/ui/status-dot.ts
@@ -2493,7 +2494,7 @@ function isOutputError({ severity, source }) {
 }
 
 // srcts/ui/tip.tsx
-import { Focusable, Tooltip, TooltipTrigger } from "@blockr/core/react";
+import { Focusable, Tooltip, TooltipTrigger } from "@blockr/ui";
 import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 var DELAY = 600;
 function Tip({ label, children }) {
@@ -2592,7 +2593,7 @@ function handleTarget(block, handle) {
 }
 function DrawnStack({ data, selected }) {
   const { core } = useGraph();
-  const color = data.color ?? "var(--bc-color-border-default)";
+  const color = data.color ?? "var(--bk-color-border)";
   const count = `${String(data.count)} ${data.count === 1 ? "block" : "blocks"}`;
   const collapse2 = data.shows === "empty" ? null : /* @__PURE__ */ jsx3(
     Button,
@@ -3023,7 +3024,7 @@ function keyAction(pressed, selection, text) {
 }
 
 // srcts/ui/panel.tsx
-import { Button as Button2, ToggleButton } from "@blockr/core/react";
+import { Button as Button2, ToggleButton } from "@blockr/ui";
 import { useCallback as useCallback2, useEffect as useEffect3, useLayoutEffect, useMemo as useMemo3, useRef as useRef3, useState as useState2 } from "react";
 
 // srcts/ui/panel-place.ts
@@ -3285,7 +3286,8 @@ function onPaste(el, paste) {
 }
 
 // srcts/ui/search.tsx
-import { SearchField, Tree, TreeItem, useBoard as useBoard2 } from "@blockr/core/react";
+import { useBoard as useBoard2 } from "@blockr/core/react";
+import { SearchField, Tree, TreeItem } from "@blockr/ui";
 import { useEffect as useEffect4, useMemo as useMemo4, useRef as useRef4, useState as useState3 } from "react";
 
 // srcts/ui/outline.ts
@@ -3393,7 +3395,8 @@ function SearchPanel({ onClose }) {
 }
 
 // srcts/ui/toolbar.tsx
-import { Button as Button3, Menu, MenuItem, MenuTrigger, Separator, Toolbar, Tooltip as Tooltip2, TooltipTrigger as TooltipTrigger2, useBoard as useBoard3 } from "@blockr/core/react";
+import { useBoard as useBoard3 } from "@blockr/core/react";
+import { Button as Button3, Menu, MenuItem, MenuTrigger, Separator, Toolbar, Tooltip as Tooltip2, TooltipTrigger as TooltipTrigger2 } from "@blockr/ui";
 import { useCallback as useCallback3, useRef as useRef5, useSyncExternalStore as useSyncExternalStore2 } from "react";
 
 // srcts/ui/tools.ts

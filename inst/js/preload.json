@@ -9,7 +9,8 @@
     "@blockr/core/react",
     "react",
     "./xyflow-82a19db7.js",
-    "react/jsx-runtime"
+    "react/jsx-runtime",
+    "@blockr/ui"
   ],
   "xyflow-82a19db7.js": [
     "react",

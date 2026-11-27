@@ -43,7 +43,7 @@
 // what its advanced action is about leaves the board.
 
 import type { BlockId, Board, BoardObject, CoreApi, Delta, FrontendModule, Target } from "@blockr/core";
-import { Button, ToggleButton } from "@blockr/core/react";
+import { Button, ToggleButton } from "@blockr/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { stackOf } from "../geometry/index.ts";
