@@ -29,7 +29,10 @@ const POSITIONS: GraphState["positions"] = {
 const board: JsonBoard = {
   ...HELLO.board,
   packages: { ...HELLO.board.packages, "blockr.graph": "0.2.0" },
-  board: { ...HELLO.board.board, plugins: { [GRAPH]: { state: { ...defaultState, positions: POSITIONS }, version: 1 } } },
+  board: {
+    ...HELLO.board.board,
+    plugins: { [GRAPH.package]: { [GRAPH.id]: { state: { ...defaultState, positions: POSITIONS }, version: 1 } } },
+  },
 };
 
 let stub: StubCore | undefined;
@@ -41,9 +44,12 @@ async function start(lock = HELLO.lock): Promise<StubCore> {
       lock,
       board,
       packages: { ...HELLO.packages, "blockr.graph": "0.2.0" },
-      plugins: { ...HELLO.plugins, [GRAPH]: { name: "Workflow", version: 1, options: [], module: "blockr.graph/js/graph.js" } },
+      plugins: [
+        ...HELLO.plugins,
+        { package: "blockr.graph", id: "graph_plugin", name: "Workflow", version: 1, options: [], module: "blockr.graph/js/graph.js" },
+      ],
     },
-    modules: { [GRAPH]: graph },
+    offered: { [GRAPH.package]: { [GRAPH.id]: graph } },
   });
   return stub;
 }
@@ -56,16 +62,17 @@ afterEach(async () => {
 });
 
 function dag(core: CoreApi): GraphState {
-  return core.store.board().plugins[GRAPH] as GraphState;
+  return core.store.board().plugins[GRAPH.package]?.[GRAPH.id] as GraphState;
 }
 
-// The ids of the board actions that a menu of the target offers.
+// The ids of the board actions that a menu of the target offers, each within
+// its package.
 function offered(core: CoreApi, target: Parameters<CoreApi["boardActions"]["on"]>[0]): string[] {
   return core.boardActions.on(target).map((action) => action.id);
 }
 
 function paste(core: CoreApi): Promise<void> {
-  return core.boardActions.trigger(PASTE, { board: true }, { el: document.body });
+  return core.boardActions.trigger(core.id("blockr.graph", PASTE), { board: true }, { el: document.body });
 }
 
 // What the DAG's board actions told the user, through notifications of the
@@ -88,7 +95,7 @@ describe("Copy", () => {
     expect(Object.keys(copied.board.blocks)).toEqual(["a", "b"]);
     expect(Object.keys(copied.board.links)).toEqual(["ab"]);
     expect(Object.keys(copied.board.stacks)).toEqual(["s1"]);
-    expect((copied.board.plugins[GRAPH]?.state as GraphState).positions).toEqual({ a: POSITIONS.a, b: POSITIONS.b });
+    expect((copied.board.plugins[GRAPH.package]?.[GRAPH.id]?.state as GraphState).positions).toEqual({ a: POSITIONS.a, b: POSITIONS.b });
     expect(core.store.canUndo()).toBe(false);
   });
 
@@ -194,7 +201,7 @@ describe("Paste", () => {
       ...json,
       board: {
         ...json.board,
-        blocks: { a: iris, z: { ...iris, registry_id: "blockr.ghost-ghost_block", name: "Ghost" } },
+        blocks: { a: iris, z: { ...iris, registry_id: { package: "blockr.ghost", id: "ghost_block" }, name: "Ghost" } },
         links: {},
         stacks: {},
         options: {},
@@ -213,7 +220,7 @@ describe("Paste", () => {
     const json = core.store.jsonBoard();
     const iris = json.board.blocks.a;
     if (iris === undefined) throw new Error("The fixture holds no block a.");
-    const ghost = { ...iris, registry_id: "blockr.ghost-ghost_block", name: "Ghost" };
+    const ghost = { ...iris, registry_id: { package: "blockr.ghost", id: "ghost_block" }, name: "Ghost" };
     await navigator.clipboard.writeText(JSON.stringify({ ...json, board: { ...json.board, blocks: { z: ghost }, links: {}, stacks: {}, options: {}, plugins: {} } }));
     await paste(core);
     expect(told(core)).toEqual([]);

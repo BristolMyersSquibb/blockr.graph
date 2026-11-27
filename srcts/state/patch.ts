@@ -13,8 +13,8 @@ import { isObject } from "./json.ts";
 
 // The JSON Pointer to the segments given, from the board's root.
 // It writes "~" as "~0" and "/" as "~1", and gives
-// "/plugins/blockr.graph-graph_plugin" for
-// ["plugins", "blockr.graph-graph_plugin"].
+// "/plugins/blockr.graph/graph_plugin" for
+// ["plugins", "blockr.graph", "graph_plugin"].
 export function pointer(segments: readonly string[]): string {
   return segments.map((segment) => `/${segment.replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
 }
@@ -31,16 +31,17 @@ function segmentsFromPath(path: string): string[] | undefined {
 // The state of the plugin `plugin` after the patches.
 // It applies the patches that change the plugin's state, in order, to
 // `state`, the plugin's state in the board before them, and skips the
-// others.
+// others. A patch names the plugin by two segments, the package and the id of
+// its class, as /plugins/blockr.graph/graph_plugin/positions/a does.
 // A patch at the plugin's own path replaces the state whole.
 // It gives undefined where a patch cannot apply, as where its path leads to
 // nothing, since the store then refuses the delta.
-export function patched(state: Json, patches: readonly Patch[], plugin: PluginClassId): Json | undefined {
+export function patched(state: Json, patches: readonly Patch[], plugin: Pick<PluginClassId, "package" | "id">): Json | undefined {
   let at: Json | undefined = state;
   for (const patch of patches) {
     const segments = segmentsFromPath(patch.path);
-    if (segments?.[0] !== "plugins" || segments[1] !== plugin) continue;
-    at = at === undefined ? undefined : applied(at, segments.slice(2), patch);
+    if (segments?.[0] !== "plugins" || segments[1] !== plugin.package || segments[2] !== plugin.id) continue;
+    at = at === undefined ? undefined : applied(at, segments.slice(3), patch);
   }
   return at;
 }

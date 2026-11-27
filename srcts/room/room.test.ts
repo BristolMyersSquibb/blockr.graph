@@ -4,6 +4,7 @@
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3, notes).
 
 import type { Board } from "@blockr/core";
+import { id } from "@blockr/core/stubs";
 import { beforeAll, describe, expect, test } from "vitest";
 import { blockBox, canvasOf, changed, distance, gapOf } from "../geometry/index.ts";
 import type { Box } from "../geometry/index.ts";
@@ -112,7 +113,7 @@ describe("making room for what Repulsion places", () => {
     // targets sit, as the spike appended it.
     const board: Board = {
       ...laid,
-      blocks: { ...laid.blocks, added: { registry_id: "blockr.core-head_block", state: {}, name: "Filter rows", locked: null } },
+      blocks: { ...laid.blocks, added: { registry_id: id("blockr.core", "head_block"), state: {}, name: "Filter rows", locked: null } },
     };
     const start = direction === "TB" ? { x: at.x, y: at.y + 52 + gap } : { x: at.x + box(hub).w / 2 + gap + 40, y: at.y };
     const started = changed(canvasOf(board, state), { positions: { added: start }, points: {} });

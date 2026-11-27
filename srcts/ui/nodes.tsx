@@ -174,7 +174,7 @@ function DrawnStack({ data, selected }: NodeProps<StackNode>): ReactElement {
         className="blockr-graph-collapse nodrag"
         aria-label={data.shows === "collapsed" ? `Expand ${data.name}` : `Collapse ${data.name}`}
         onPress={() => {
-          void core.commands.run("blockr.graph-collapse_stack", { stack: data.stack, collapsed: data.shows !== "collapsed" });
+          void core.commands.run(core.id("blockr.graph", "collapse_stack"), { stack: data.stack, collapsed: data.shows !== "collapsed" });
         }}
       >
         <Chevron collapsed={data.shows === "collapsed"} />

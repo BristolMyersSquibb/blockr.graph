@@ -1,10 +1,9 @@
 // The DAG's commands for its layout
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.1#commands):
 //
-// - The command blockr.graph-relayout sets the direction and the spacing
-//   given and lays the whole board out again with them. In prepare(), it
-//   loads dagre where it has not loaded yet, and lays the board out. Its
-//   run() returns the
+// - The command relayout sets the direction and the spacing given and lays
+//   the whole board out again with them. In prepare(), it loads dagre where
+//   it has not loaded yet, and lays the board out. Its run() returns the
 //   positions that the layout gave the blocks still on the board and the
 //   stacks that still hold no block, snapped while `snap` is on, and the
 //   settings that it was given, so that one undo puts every block back. A
@@ -12,10 +11,10 @@
 //   class's afterStep gave it. It empties what each collapse moved, since
 //   every block moves, so that expanding a stack later makes room around its
 //   box alone.
-// - The command blockr.graph-set_placement sets how added blocks get their
-//   place, and blockr.graph-set_snap whether the DAG snaps the positions
-//   that it sets, and to what size. Neither moves a block, so neither takes
-//   an undo step, and the next operation or drag snaps.
+// - The command set_placement sets how added blocks get their place, and
+//   set_snap whether the DAG snaps the positions that it sets, and to what
+//   size. Neither moves a block, so neither takes an undo step, and the next
+//   operation or drag snaps.
 
 import type { Patch } from "@blockr/core";
 import { canvasOf, snapChanges } from "../geometry/index.ts";
@@ -30,8 +29,8 @@ import * as schemas from "./schemas.ts";
 
 type Relayout = Partial<Settings>;
 
-// What blockr.graph-relayout prepares: the settings that it lays out with,
-// and where the layout puts the blocks and the stacks that hold no block.
+// What relayout prepares: the settings that it lays out with, and where the
+// layout puts the blocks and the stacks that hold no block.
 interface Laid extends Settings {
   readonly changes: Changes;
 }
@@ -47,7 +46,7 @@ interface SetSnap {
 
 export const layoutCommands = [
   command<Relayout, Laid>({
-    id: "blockr.graph-relayout",
+    id: "relayout",
     label: "Lay out again",
     description:
       "Lays the whole board out again, every block and every stack that holds no block, with the direction and the spacing given, which the DAG keeps from then on, or with those it holds where they are left out. It moves every block, so run it before placing blocks by hand, never after.",
@@ -79,7 +78,7 @@ export const layoutCommands = [
     },
   }),
   command<SetPlacement>({
-    id: "blockr.graph-set_placement",
+    id: "set_placement",
     label: "Set placement",
     description:
       "Sets how the DAG places the blocks that later edits add: repulsion keeps a new block where it starts and moves the blocks around it out of its way, and beside moves the new block on to the nearest free spot and moves no other block. It moves no block itself.",
@@ -95,7 +94,7 @@ export const layoutCommands = [
     },
   }),
   command<SetSnap>({
-    id: "blockr.graph-set_snap",
+    id: "set_snap",
     label: "Set snapping",
     description:
       "Sets whether the DAG snaps every position that it sets to a multiple of the snap size, and the snap size, in pixels of the canvas. It moves no block itself: the next move or layout snaps.",

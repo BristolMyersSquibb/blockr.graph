@@ -43,7 +43,7 @@ import type { GraphState, Point, StackEntry } from "../state/index.ts";
 // How far a block may move, or a box reach, in pixels, before it counts.
 const LEAST = 0.5;
 
-export function afterStep(board: Board, before: Board, plugin: PluginClassId): Patch[] {
+export function afterStep(board: Board, before: Board, plugin: Pick<PluginClassId, "package" | "id">): Patch[] {
   const state = graphState(board, plugin);
   if (state === undefined) return [];
   const prior = graphState(before, plugin);

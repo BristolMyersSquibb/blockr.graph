@@ -43,5 +43,5 @@ read_json_strictly <- function(x) {
 # and its version, read back from the JSON.
 written_graph_plugin <- function(board) {
   plugins <- blockr_ser(board)[["board"]][["plugins"]]
-  read_json_strictly(write_json(plugins[["blockr.graph-graph_plugin"]]))
+  read_json_strictly(write_json(plugins[["blockr.graph"]][["graph_plugin"]]))
 }

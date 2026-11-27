@@ -2,10 +2,10 @@
 // handle (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#gestures):
 //
 // - From a block's result to an input of another block, or from an input to a
-//   result, it runs blockr.core-add_link for the input whose handle takes the
-//   link. The DAG checks nothing itself, and leaves to the command's preflight
-//   to refuse a link that would close a cycle, join a block to itself or feed
-//   an input that a link feeds already.
+//   result, it runs add_link of blockr.core for the input whose handle takes
+//   the link. The DAG checks nothing itself, and leaves to the command's
+//   preflight to refuse a link that would close a cycle, join a block to
+//   itself or feed an input that a link feeds already.
 // - Dropped on a variadic block's placeholder, it takes the block's next place,
 //   through an empty input.
 // - Dropped on a variadic block's place that a link holds, it adds nothing,
@@ -30,7 +30,7 @@ export interface DroppedLink {
   readonly targetHandle: string;
 }
 
-// The args of blockr.core-add_link for the link, or why the DAG adds none.
+// The args of add_link of blockr.core for the link, or why the DAG adds none.
 export type LinkDrop = { readonly add: Readonly<Record<string, Json>> } | { readonly taken: string };
 
 // What the link dropped between the ends given does, or undefined where it

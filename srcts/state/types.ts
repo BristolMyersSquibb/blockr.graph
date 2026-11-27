@@ -1,5 +1,5 @@
 // The types of the DAG plugin's state, which the board holds at
-// /plugins/blockr.graph-graph_plugin
+// /plugins/blockr.graph/graph_plugin
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.1#the-state).
 // The build generates the JSON Schema of the state from GraphState and writes
 // it beside the DAG's module, as inst/js/graph.schema.json.
@@ -16,7 +16,7 @@ import type { BlockId, StackId } from "@blockr/core";
 
 /** The state of the Workflow, which draws the board as a directed acyclic graph of its blocks and the links between them: where each block sits on the canvas, what the DAG keeps about stacks, and how it arranges the board. */
 export type GraphState = {
-  /** Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand. */
+  /** Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run the command { "package": "blockr.graph", "id": "relayout" } before placing blocks by hand. */
   readonly positions: Readonly<Record<BlockId, Point>>;
   /** What the DAG keeps about a stack, by the stack's id, for a stack that holds no block, or one with blocks that the DAG shows collapsed. A stack that holds blocks and shows expanded has no entry. */
   readonly stacks: Readonly<Record<StackId, StackEntry>>;
@@ -59,7 +59,7 @@ export type Move = {
   readonly to: Point;
 };
 
-/** How the DAG arranges the board. Changing the direction or the spacing through blockr.graph-relayout lays the whole board out again. */
+/** How the DAG arranges the board. Changing the direction or the spacing through the command { "package": "blockr.graph", "id": "relayout" } lays the whole board out again. */
 export type Layout = {
   /** The way that the board runs: TB from top to bottom, or LR from left to right. */
   readonly direction: "TB" | "LR";

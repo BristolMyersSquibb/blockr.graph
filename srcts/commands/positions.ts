@@ -23,7 +23,7 @@ interface ChangePosition {
 
 export const positionCommands = [
   command<ChangePosition>({
-    id: "blockr.graph-change_position",
+    id: "change_position",
     label: "Move blocks",
     description:
       "Moves blocks, and stacks that hold no block, to the positions given, as a drag on the canvas does. A block's position is the centre of its node, which holds its mark and its name below it. A stack that holds blocks has no position of its own, since its box fits its blocks, so move its blocks instead. A position given for a block that the same batch adds is where the DAG starts to place it, after the command that adds it. Every block and stack left out stays where it is.",

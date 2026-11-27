@@ -61,7 +61,7 @@ export function copiedBoard(json: JsonBoard, copied: Copied): JsonBoard {
   const blocks = new Set(copied.blocks);
   const stacks = new Set(copied.stacks);
   const { board } = json;
-  const graph = board.plugins[GRAPH];
+  const graph = board.plugins[GRAPH.package]?.[GRAPH.id];
   const state = graph === undefined || !isGraphState(graph.state) ? undefined : graph.state;
   const taken: JsonBoard["board"] = {
     ...board,
@@ -69,17 +69,21 @@ export function copiedBoard(json: JsonBoard, copied: Copied): JsonBoard {
     links: kept(board.links, (_id, link) => blocks.has(link.from) && blocks.has(link.to)),
     stacks: kept(board.stacks, (id) => stacks.has(id)),
     options: {},
-    plugins: graph === undefined || state === undefined ? {} : { [GRAPH]: { ...graph, state: copiedState(state, blocks, stacks) } },
+    plugins:
+      graph === undefined || state === undefined
+        ? {}
+        : { [GRAPH.package]: { [GRAPH.id]: { ...graph, state: copiedState(state, blocks, stacks) } } },
   };
   return { ...json, packages: packagesOf(taken, json.packages), board: taken };
 }
 
 // The entries of `packages` for the packages that the board's block classes
-// and plugin classes come from. The id of a class starts with the name of its
-// package and a "-", and the name of a package holds no "-".
+// and plugin classes come from: the package of each block's registry id, and
+// each package under which the board holds a plugin's state. A block class
+// that an app script defines has no package.
 function packagesOf(board: JsonBoard["board"], packages: Readonly<Record<string, string>>): Record<string, string> {
-  const ids = [...Object.values(board.blocks).map((block) => block.registry_id), ...Object.keys(board.plugins)];
-  return kept(packages, (pkg) => ids.some((id) => id.startsWith(`${pkg}-`)));
+  const used = new Set([...Object.values(board.blocks).flatMap((block) => block.registry_id.package ?? []), ...Object.keys(board.plugins)]);
+  return kept(packages, (pkg) => used.has(pkg));
 }
 
 // The DAG's state with the positions of the copied blocks and of the copied

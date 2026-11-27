@@ -139,7 +139,7 @@ serve(new_board(plugins = list(new_graph_plugin())))
 In blockr.dag, code in R sets the extension's `positions` and `layout` from outside, through an update of the board.
 On blockr.core 0.2, nothing changes a board in R, as the notes of blockr.core say.
 The DAG's commands change its state in the browser instead.
-For example, `blockr.graph-change_position` moves blocks, and `blockr.graph-relayout` lays the board out again.
+For example, the DAG's command `change_position` moves blocks, and its command `relayout` lays the board out again.
 
 ## The DAG's panel in the dock
 
@@ -182,7 +182,7 @@ serve(
 
 A script may give the DAG's extension another name in `extensions`, as `list(workflow = new_dag_extension())`.
 It then gives the plugin the same name, as `list(workflow = new_graph_plugin())`.
-A grid may also name the DAG's plugin by the id of its class, `plg("blockr.graph-graph_plugin")`, which needs no name.
+A grid may also name the DAG's plugin by its class, `plg("graph_plugin", package = "blockr.graph")`, which needs no name.
 Where a grid names a plugin that the board's `plugins` do not name, `new_board()` stops with an error that names the view and the plugin.
 
 ## The layout
@@ -220,7 +220,7 @@ The function `is_dag_layout()` goes, and a script tests `inherits(x, "graph_layo
 In blockr.dag, G6 lays the whole board out again as blocks are added or removed, where the option `g6R.layout_on_data_change` is `TRUE`.
 In blockr.graph, the DAG lays the whole board out again only when someone asks for it.
 The user asks through the board action Layout, on the DAG's toolbar.
-Layout runs the command `blockr.graph-relayout`, which the assistant may run as well.
+Layout runs the DAG's command `relayout`, which the assistant may run as well.
 A block that a step adds gets its place from the layout's `placement`.
 
 ## Menus and the toolbar
@@ -240,9 +240,13 @@ So the generics go, with `new_context_menu_entry()`, `new_toolbar_item()`, `is_c
 A script that defines a method of `context_menu_items()` or `toolbar_items()` moves what the method adds into a package, as a board action.
 The notes of blockr.core say the same of a plugin that a script defines.
 The package lists a plugin class in its `._BLOCKR_MODULES_`, as `?blockr.core::read_blocks_yml` describes.
-The class's module, in JavaScript, lists the board actions in `boardActions`, each of the type `BoardAction` of `@blockr/core`.
+The class's module, in JavaScript, lists the board actions in `boardActions`, each of the type `Omit<BoardAction, "package">` of `@blockr/core`.
+A board action's definition gives its id alone.
+Core registers the board action under the package of the plugin class that lists it.
 This module offers the board action Lock block on every block.
-The board action runs the command of blockr.core that changes a block, `blockr.core-change_block`:
+The board action runs `change_block`, the command of blockr.core that changes a block.
+Its `run` gets `core` as its third argument.
+It names the command by the `Id` that `core.id()` gives:
 
 ```js
 export const api = 1;
@@ -250,13 +254,13 @@ export const api = 1;
 export default {
   boardActions: [
     {
-      id: "mypkg-lock_block_action",
+      id: "lock_block_action",
       label: "Lock block",
       on: ["block"],
       category: "edit",
-      run: (board, target) => [
+      run: (board, target, core) => [
         {
-          id: "blockr.core-change_block",
+          id: core.id("blockr.core", "change_block"),
           args: { id: target.block, locked: true },
         },
       ],
@@ -270,7 +274,7 @@ Each argument of an entry or an item of blockr.dag has this place in a board act
 | In blockr.dag | In a board action |
 |---|---|
 | The `name` of an entry, and the `tooltip` of an item | Its `label`, which a menu shows, and a button as its tooltip |
-| The `id` of an entry or an item | Its `id`, which starts with the package, as `mypkg-lock_block_action` |
+| The `id` of an entry or an item | Its `id` within the package, as `lock_block_action` |
 | The `icon` of an item | Its `icon`, as SVG markup |
 | The `condition` of an entry | Its `on`, the kinds of object whose menus offer it, and its `offers()`, which decides for each object |
 | The `action` of an entry or an item, which changes the board in R | Its `run()`, which returns the commands that change the board, or its quick or advanced action, which asks the user first |

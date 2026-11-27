@@ -74,7 +74,7 @@ app_board <- function(app) {
 
 # The DAG's state on the board that the client holds.
 app_dag <- function(app) {
-  app_board(app)[["plugins"]][["blockr.graph-graph_plugin"]]
+  app_board(app)[["plugins"]][["blockr.graph"]][["graph_plugin"]]
 }
 
 # The position of a block, as the DAG's state holds it, as a named vector.

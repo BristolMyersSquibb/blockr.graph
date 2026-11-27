@@ -58,10 +58,14 @@ import { layoutLevel } from "./layout.ts";
 import { notedPoint } from "./noted.ts";
 import { pasteBatch } from "./paste.ts";
 
-export const COPY = "blockr.graph-copy_action";
-export const CUT = "blockr.graph-cut_action";
-export const PASTE = "blockr.graph-paste_action";
-export const LAYOUT = "blockr.graph-layout_action";
+// The ids of the DAG's board actions within blockr.graph, by which
+// graphBoardActions defines them. Core registers each under blockr.graph, the
+// package of the DAG plugin's class, so that a caller triggers one by the Id
+// that core.id("blockr.graph", PASTE) gives.
+export const COPY = "copy_action";
+export const CUT = "cut_action";
+export const PASTE = "paste_action";
+export const LAYOUT = "layout_action";
 
 // What Paste tells the user where it adds nothing.
 export const NOTHING_TO_PASTE = "The clipboard holds no board objects to paste.";
@@ -70,7 +74,7 @@ export const CLIPBOARD_UNREAD = "The browser did not let the page read the clipb
 // What withdraws the notification that Paste raised as it last ran.
 let told: (() => void) | undefined;
 
-export const graphBoardActions: readonly BoardAction[] = [
+export const graphBoardActions: readonly Omit<BoardAction, "package">[] = [
   {
     id: COPY,
     label: "Copy",
@@ -93,8 +97,8 @@ export const graphBoardActions: readonly BoardAction[] = [
     run(_board, target, core) {
       const { blocks, stacks } = copy(target, core);
       return [
-        ...blocks.map((id): CommandCall => ({ id: "blockr.core-remove_block", args: { id } })),
-        ...stacks.map((id): CommandCall => ({ id: "blockr.core-remove_stack", args: { id } })),
+        ...blocks.map((id): CommandCall => ({ id: core.id("blockr.core", "remove_block"), args: { id } })),
+        ...stacks.map((id): CommandCall => ({ id: core.id("blockr.core", "remove_stack"), args: { id } })),
       ];
     },
   },
@@ -109,7 +113,7 @@ export const graphBoardActions: readonly BoardAction[] = [
       told?.();
       told = undefined;
       const tell = (severity: Severity, message: string, code: string): void => {
-        told = core.notifications.notify(GRAPH, { severity, message, code, about: null });
+        told = core.notifications.notify(core.id(GRAPH.package, GRAPH.id), { severity, message, code, about: null });
       };
       // The point that the UI noted as the user pasted, before the run waits
       // for the clipboard, during which the user may open another menu.
@@ -127,7 +131,7 @@ export const graphBoardActions: readonly BoardAction[] = [
         else tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
         return undefined;
       }
-      const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken));
+      const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken), core);
       if (batch.length > 0) return batch;
       if (!read.dropped.some((dropped) => "block" in dropped.about)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
       return undefined;

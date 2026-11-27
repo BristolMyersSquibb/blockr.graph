@@ -19,6 +19,7 @@
 
 import type { BoardObject, Target } from "@blockr/core";
 import { COPY, CUT } from "../actions/index.ts";
+import type { Listed } from "./tools.ts";
 
 // A key that the user pressed, as a keyboard event gives it.
 export interface Pressed {
@@ -30,9 +31,10 @@ export interface Pressed {
   readonly target: EventTarget | null;
 }
 
-// What a key triggers: a board action, by its id or a role's, on a target.
+// What a key triggers: a board action, by a role's id or by the id of one of
+// the DAG's, as the toolbar's list names it, on a target.
 export interface KeyAction {
-  readonly id: string;
+  readonly action: Listed;
   readonly target: Target;
 }
 
@@ -53,13 +55,13 @@ export function keyAction(pressed: Pressed, selection: readonly BoardObject[], t
   const mod = pressed.metaKey || pressed.ctrlKey;
   if (pressed.altKey || pressed.shiftKey) return undefined;
   const chosen = selection.length === 0 ? undefined : { selection };
-  if (pressed.key === "Backspace" && !mod) return chosen === undefined ? undefined : { id: "remove_selected_role", target: chosen };
+  if (pressed.key === "Backspace" && !mod) return chosen === undefined ? undefined : { action: { role: "remove_selected_role" }, target: chosen };
   if (!mod) return undefined;
   switch (pressed.key.toLowerCase()) {
     case "c":
-      return text || chosen === undefined ? undefined : { id: COPY, target: chosen };
+      return text || chosen === undefined ? undefined : { action: { id: COPY }, target: chosen };
     case "x":
-      return text || chosen === undefined ? undefined : { id: CUT, target: chosen };
+      return text || chosen === undefined ? undefined : { action: { id: CUT }, target: chosen };
     default:
       return undefined;
   }

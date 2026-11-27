@@ -28,8 +28,10 @@ A \code{plugin} object, as \code{\link[blockr.core:new_plugin]{blockr.core::new_
 The DAG draws the board as a directed acyclic graph: a node for each block,
 an edge for each link and a box for each stack.
 The constructor \code{new_graph_plugin()} makes the DAG plugin, of class
-\code{c("graph_plugin", "plugin")}, whose plugin class has the id
-\code{blockr.graph-graph_plugin} (see \code{\link[blockr.core:new_plugin]{blockr.core::new_plugin()}}).
+\code{c("graph_plugin", "plugin")} (see \code{\link[blockr.core:new_plugin]{blockr.core::new_plugin()}}).
+Its plugin class has the id
+\code{list(package = "blockr.graph", id = "graph_plugin")}, as
+\code{\link[blockr.core:plugin_class_id]{blockr.core::plugin_class_id()}} gives it.
 The DAG keeps its state in the board, in three parts:
 }
 \details{

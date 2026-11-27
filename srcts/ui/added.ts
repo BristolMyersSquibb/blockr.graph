@@ -11,7 +11,7 @@
 //   stack, start what they add at the middle of the view.
 //
 // The point goes to the block that the batch adds, or to the first of several
-// in the order of their links, through blockr.graph-change_position, and the
+// in the order of their links, through change_position of blockr.graph, and the
 // placement strategy starts the others against it. Where the batch adds no
 // block, it goes to the stack that holds no block that the batch adds.
 // Where the node would come within the spacing's gap of a node or a stack's
@@ -24,7 +24,7 @@
 // Where the batch gives what it adds a position itself, as Paste does, the
 // DAG adds nothing, so that the batch keeps its own arrangement.
 
-import type { Board, CommandCall, Delta } from "@blockr/core";
+import type { Board, CommandCall, CoreApi, Delta } from "@blockr/core";
 import { blockBox, canvasOf, stackBoxAt } from "../geometry/index.ts";
 import type { Box } from "../geometry/index.ts";
 import { freeOffset, linkOrder } from "../placement/index.ts";
@@ -32,8 +32,9 @@ import { graphState } from "../state/index.ts";
 import type { GraphState, Point } from "../state/index.ts";
 
 // The commands that start what the deltas add at the point, given the board
-// that the deltas leave, before the class's afterStep places anything.
-export function startAt(after: Board, deltas: readonly Delta[], point: Point): CommandCall[] {
+// that the deltas leave, before the class's afterStep places anything. It
+// names the command by the Id that the caller's core.id() gives.
+export function startAt(after: Board, deltas: readonly Delta[], point: Point, core: Pick<CoreApi, "id">): CommandCall[] {
   const blocks = new Set<string>();
   const stacks = new Set<string>();
   for (const delta of deltas) {
@@ -46,10 +47,12 @@ export function startAt(after: Board, deltas: readonly Delta[], point: Point): C
   const [first] = linkOrder(after, blocks);
   if (first !== undefined) {
     const at = freeAt(after, state, blockBox(point, after.blocks[first]?.name ?? ""));
-    return [{ id: "blockr.graph-change_position", args: { positions: { [first]: at } } }];
+    return [{ id: core.id("blockr.graph", "change_position"), args: { positions: { [first]: at } } }];
   }
   const [stack] = stacks;
-  if (stack !== undefined) return [{ id: "blockr.graph-change_position", args: { stacks: { [stack]: freeAt(after, state, stackBoxAt(point)) } } }];
+  if (stack !== undefined) {
+    return [{ id: core.id("blockr.graph", "change_position"), args: { stacks: { [stack]: freeAt(after, state, stackBoxAt(point)) } } }];
+  }
   return [];
 }
 

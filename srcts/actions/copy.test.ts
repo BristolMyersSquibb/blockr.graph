@@ -60,11 +60,14 @@ describe("the JSON board that Copy writes", () => {
       blocks: Object.fromEntries(
         Object.entries(board.blocks).map(([id, block]) => [
           id,
-          { ...block, registry_id: id === "e" ? "blockr.ggplot-ggplot_block" : block.registry_id, version: 1 },
+          { ...block, registry_id: id === "e" ? { package: "blockr.ggplot", id: "ggplot_block" } : { package: "blockr.core", id: "head_block" }, version: 1 },
         ]),
       ),
-      options: { "blockr.core-board_name": { value: "Test", version: 1, package: "blockr.core" } },
-      plugins: { [GRAPH]: { state: stateOf(board), version: 1 }, "blockr.test-notes": { state: { text: "" }, version: 1 } },
+      options: { board_name: { value: "Test", version: 1, package: "blockr.core" } },
+      plugins: {
+        [GRAPH.package]: { [GRAPH.id]: { state: stateOf(board), version: 1 } },
+        "blockr.test": { notes_plugin: { state: { text: "" }, version: 1 } },
+      },
     },
   };
 
@@ -74,7 +77,7 @@ describe("the JSON board that Copy writes", () => {
     expect(copied.board.blocks.a).toEqual(json.board.blocks.a);
     expect(Object.keys(copied.board.links)).toEqual(["l1"]);
     expect(Object.keys(copied.board.stacks)).toEqual(["s1", "s2", "s3"]);
-    const state = copied.board.plugins[GRAPH]?.state as GraphState;
+    const state = copied.board.plugins[GRAPH.package]?.[GRAPH.id]?.state as GraphState;
     expect(state.positions).toEqual({ a: { x: 0, y: 0 }, b: { x: 0, y: 150 }, d: { x: 200, y: 0 } });
     // A collapsed stack pastes expanded, and a stack that holds no block keeps
     // its position.
@@ -85,7 +88,8 @@ describe("the JSON board that Copy writes", () => {
   test("records the format, and holds no other plugin's state and no board option", () => {
     const copied = copiedBoard(json, copiedOf(board, { block: "c" }));
     expect(copied.format).toBe(1);
-    expect(Object.keys(copied.board.plugins)).toEqual([GRAPH]);
+    expect(Object.keys(copied.board.plugins)).toEqual([GRAPH.package]);
+    expect(Object.keys(copied.board.plugins[GRAPH.package] ?? {})).toEqual([GRAPH.id]);
     expect(copied.board.options).toEqual({});
   });
 
@@ -101,5 +105,11 @@ describe("the JSON board that Copy writes", () => {
     // Where the board holds no state of the DAG, the copied board holds none
     // either, and does not list blockr.graph.
     expect(packages({ block: "c" }, { ...json, board: { ...json.board, plugins: {} } })).toEqual({ "blockr.core": "0.2.0" });
+  });
+
+  test("lists no package for a block whose class an app script defines", () => {
+    const c = { ...json.board.blocks.c, registry_id: { package: null, id: "script_block" } };
+    const scripted = { ...json, board: { ...json.board, blocks: { ...json.board.blocks, c } } } as JsonBoard;
+    expect(copiedBoard(scripted, copiedOf(board, { block: "c" })).packages).toEqual({ "blockr.graph": "0.2.0" });
   });
 });

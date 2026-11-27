@@ -50,7 +50,7 @@ function helloWith(state: Partial<GraphState> | undefined, lock = HELLO.lock, wi
       blocks,
       links,
       stacks,
-      plugins: state === undefined ? {} : { [GRAPH]: { state: { ...defaultState, ...state }, version: 1 } },
+      plugins: state === undefined ? {} : { [GRAPH.package]: { [GRAPH.id]: { state: { ...defaultState, ...state }, version: 1 } } },
     },
   };
   return {
@@ -58,7 +58,10 @@ function helloWith(state: Partial<GraphState> | undefined, lock = HELLO.lock, wi
     lock,
     board: json,
     packages: { ...HELLO.packages, "blockr.graph": "0.2.0" },
-    plugins: { ...HELLO.plugins, [GRAPH]: { name: "Workflow", version: 1, options: [], module: "blockr.graph/js/graph.js" } },
+    plugins: [
+      ...HELLO.plugins,
+      { package: "blockr.graph", id: "graph_plugin", name: "Workflow", version: 1, options: [], module: "blockr.graph/js/graph.js" },
+    ],
   };
 }
 
@@ -77,15 +80,19 @@ afterEach(() => {
 });
 
 // The DAG's UI mounted in an element of the page, as a frontend places it, in
-// an app whose other modules are those given beside core's.
-async function mounted(hello: HelloReply = helloWith({ positions: POSITIONS }), modules: Readonly<Record<string, unknown>> = {}): Promise<Mounted> {
-  const stub = await act(() => stubCore({ hello, modules: { [GRAPH]: graph, ...modules } }));
+// an app whose other modules are those given beside core's, by package and
+// then by id.
+async function mounted(
+  hello: HelloReply = helloWith({ positions: POSITIONS }),
+  offered: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {},
+): Promise<Mounted> {
+  const stub = await act(() => stubCore({ hello, offered: { [GRAPH.package]: { [GRAPH.id]: graph }, ...offered } }));
   stops.push(stub.stop);
   const el = document.createElement("div");
   document.body.append(el);
   let end = (): void => undefined;
   await act(async () => {
-    end = stub.core.mountPlugin(el, GRAPH);
+    end = stub.core.mountPlugin(el, stub.core.id(GRAPH.package, GRAPH.id));
     await stub.settled();
   });
   stops.push(() => {
@@ -155,17 +162,17 @@ describe("the DAG's canvas", () => {
     await vi.waitFor(() => {
       expect(nodeIds(el)).toHaveLength(7);
     });
-    const { positions } = core.store.board().plugins[GRAPH] as GraphState;
+    const { positions } = core.store.board().plugins[GRAPH.package]?.[GRAPH.id] as GraphState;
     expect(Object.keys(positions).sort()).toEqual(["a", "b", "c", "d", "e", "f"]);
   });
 
   test("follows every change of the board, whoever makes it", async () => {
     const { el, core } = await mounted();
-    await act(() => core.commands.run("blockr.core-remove_link", { id: "keen_finch" }));
+    await act(() => core.commands.run(core.id("blockr.core", "remove_link"), { id: "keen_finch" }));
     expect(edgeIds(el)).not.toContain("l:keen_finch");
-    await act(() => core.commands.run("blockr.core-remove_block", { id: "f" }));
+    await act(() => core.commands.run(core.id("blockr.core", "remove_block"), { id: "f" }));
     expect(nodeIds(el)).not.toContain("b:f");
-    await act(() => core.commands.run("blockr.graph-change_position", { positions: { d: { x: 600, y: 600 } } }));
+    await act(() => core.commands.run(core.id("blockr.graph", "change_position"), { positions: { d: { x: 600, y: 600 } } }));
     // React Flow places the node by its top left corner, half its size from
     // the block's position.
     const [left, top] = [600 - blockWidth("Wide sepals") / 2, 600 - BLOCK_HEIGHT / 2];
@@ -244,7 +251,7 @@ describe("a stack", () => {
     await vi.waitFor(() => {
       expect(nodeIds(el)).toEqual(["b:c", "b:d", "b:e", "b:f", "s:s1"]);
     });
-    expect((core.store.board().plugins[GRAPH] as GraphState).stacks.s1).toMatchObject({ collapsed: 1 });
+    expect((core.store.board().plugins[GRAPH.package]?.[GRAPH.id] as GraphState).stacks.s1).toMatchObject({ collapsed: 1 });
     expect(nodeOf(el, "s:s1").querySelector(".blockr-graph-stack-count")?.textContent).toBe("2 blocks");
     // The links from a and b to blocks outside the stack end on its box.
     const ends = [...el.querySelectorAll<HTMLElement>(".react-flow__edge")].map((edge) => edge.getAttribute("aria-label"));
@@ -262,7 +269,7 @@ describe("a stack", () => {
     const { el, core } = await mounted();
     await pointerPress(button(el, "Collapse Input"));
     await vi.waitFor(() => {
-      expect((core.store.board().plugins[GRAPH] as GraphState).stacks.s1).toMatchObject({ collapsed: 1 });
+      expect((core.store.board().plugins[GRAPH.package]?.[GRAPH.id] as GraphState).stacks.s1).toMatchObject({ collapsed: 1 });
     });
     expect(button(el, "Expand Input")).toBeDefined();
   });
@@ -290,7 +297,7 @@ describe("a handle", () => {
     // Three more links into the variadic block e, all from above it, crowd
     // the top of its mark with six handles.
     for (const from of ["a", "c", "f"]) {
-      await act(() => core.commands.run("blockr.core-add_link", { from, to: "e" }));
+      await act(() => core.commands.run(core.id("blockr.core", "add_link"), { from, to: "e" }));
     }
     const lefts = () =>
       [...nodeOf(el, "b:e").querySelectorAll<HTMLElement>('.react-flow__handle[data-handlepos="top"]')].map((handle) => parseFloat(handle.style.left));
@@ -394,7 +401,7 @@ describe("search and the outline", () => {
     await search(el, "head");
     await pointerPress(rowOf(searchPanel(el), "Head"));
     await untilSelected(core, { block: "b" });
-    expect((core.store.board().plugins[GRAPH] as GraphState).stacks.s1).toBeUndefined();
+    expect((core.store.board().plugins[GRAPH.package]?.[GRAPH.id] as GraphState).stacks.s1).toBeUndefined();
     expect(nodeIds(el)).toContain("b:b");
   });
 
@@ -414,31 +421,32 @@ describe("search and the outline", () => {
 // removes a block that the board does not hold, and Probe, on a link, a block
 // or the board, whose advanced action shows its target as text, with a button
 // that renames block f through its done().
-const TESTER = "blockr.test-tester_plugin";
+// Its board actions define their ids alone, which core registers under the
+// package of the class, blockr.test, and name core's commands by core.id().
 const tester = {
   api: 1,
   default: {
     boardActions: [
       {
-        id: "blockr.test-break_action",
+        id: "break_action",
         label: "Break",
         on: ["board"],
         category: "edit",
-        run: () => [{ id: "blockr.core-remove_block", args: { id: "zz" } }],
+        run: (_board: unknown, _target: unknown, core: CoreApi) => [{ id: core.id("blockr.core", "remove_block"), args: { id: "zz" } }],
       },
       {
-        id: "blockr.test-probe_action",
+        id: "probe_action",
         label: "Probe",
         on: ["link", "block", "board"],
         category: "edit",
         advanced: {
-          render({ el, target, done }: { el: HTMLElement; target: unknown; done: (calls?: unknown[]) => Promise<void> }) {
+          render({ el, target, core, done }: { el: HTMLElement; target: unknown; core: CoreApi; done: (calls?: unknown[]) => Promise<void> }) {
             const shown = document.createElement("p");
             shown.textContent = JSON.stringify(target);
             const apply = document.createElement("button");
             apply.textContent = "Apply";
             apply.addEventListener("click", () => {
-              void done([{ id: "blockr.core-change_block", args: { id: "f", name: "Renamed" } }]);
+              void done([{ id: core.id("blockr.core", "change_block"), args: { id: "f", name: "Renamed" } }]);
             });
             el.append(shown, apply);
             return () => {
@@ -455,8 +463,11 @@ const tester = {
 // the tests as well.
 function mountedWithTester(): Promise<Mounted> {
   const hello = helloWith({ positions: POSITIONS });
-  const plugins = { ...hello.plugins, [TESTER]: { name: "Tester", version: 1, options: [], module: "blockr.test/js/tester.js" } };
-  return mounted({ ...hello, plugins }, { [TESTER]: tester });
+  const plugins = [
+    ...hello.plugins,
+    { package: "blockr.test", id: "tester_plugin", name: "Tester", version: 1, options: [], module: "blockr.test/js/tester.js" },
+  ];
+  return mounted({ ...hello, plugins }, { "blockr.test": { tester_plugin: tester } });
 }
 
 async function rightClick(target: Element, at = { x: 50, y: 60 }): Promise<void> {
@@ -545,7 +556,7 @@ describe("a right click", () => {
     // The point on the canvas under the right click, through the view's pan
     // and zoom, which the DAG keeps for the page from an earlier test.
     const [x = 0, y = 0, zoom = 1] = (el.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform.match(/-?[\d.]+/g) ?? []).map(Number);
-    expect((core.store.board().plugins[GRAPH] as GraphState).stacks[added ?? ""]).toEqual({ x: (700 - x) / zoom, y: (650 - y) / zoom });
+    expect((core.store.board().plugins[GRAPH.package]?.[GRAPH.id] as GraphState).stacks[added ?? ""]).toEqual({ x: (700 - x) / zoom, y: (650 - y) / zoom });
   });
 
   test("on the canvas of a locked board offers only what the lock leaves", async () => {

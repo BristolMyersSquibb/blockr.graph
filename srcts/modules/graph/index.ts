@@ -1,4 +1,4 @@
-// The module of the DAG plugin's class, blockr.graph-graph_plugin, which
+// The module of the DAG plugin's class, graph_plugin of blockr.graph, which
 // blockr.graph lists in R with the class's id and the name "Workflow". Its
 // default export is the class without its id
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.1.12#a-plugin).
