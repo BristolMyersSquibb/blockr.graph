@@ -1,7 +1,8 @@
 // Beside, the placement that moves what a step adds on together, keeping how
 // it sits, to the nearest spot where no added node overlaps another node that
-// shows, or the box of a stack that it is not in, with the spacing's gap
-// around it, and moves no other block
+// shows, or the padding around a block of a stack that it is not in, which
+// the stack's shape holds, with the spacing's gap around it, and moves no
+// other block
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.1#placing-added-blocks).
 // It looks for the spot in rings around where what the step adds starts, one
 // gap apart, and takes the first spot where no added node overlaps another
@@ -9,7 +10,7 @@
 // Within a ring, it tries the nearer spots first, and of two as near, the one
 // further up, then the one further left.
 
-import { bounds, canvasNodes, nodeChanges, overlaps, padded, shifted, STACK_PADDING } from "../geometry/index.ts";
+import { canvasNodes, nodeChanges, overlaps, padded, shifted, STACK_PADDING } from "../geometry/index.ts";
 import type { Box, Canvas, CanvasNode, Changes } from "../geometry/index.ts";
 import type { Added } from "../room/index.ts";
 
@@ -49,17 +50,12 @@ export function beside(canvas: Canvas, added: Added, gap: number): Changes {
   return { positions: {}, points: {} };
 }
 
-// The box of each expanded stack, from its blocks that the step did not add,
-// by the stack's id.
+// The box of each block of an expanded stack that the step did not add, with
+// the padding, each with the stack's id.
 function stackBoxes(canvas: Canvas, nodes: readonly CanvasNode[], isAdded: (node: CanvasNode) => boolean): [string, Box][] {
-  const held = new Map<string, Box[]>();
-  for (const node of nodes) {
-    if (node.kind !== "block" || node.stack === null || isAdded(node)) continue;
-    held.set(node.stack, [...(held.get(node.stack) ?? []), node.box]);
-  }
-  return [...held].flatMap(([stack, boxes]) => {
-    const box = bounds(boxes);
-    return box === undefined || canvas.collapsed.has(stack) ? [] : [[stack, padded(box, STACK_PADDING)] as [string, Box]];
+  return nodes.flatMap((node): [string, Box][] => {
+    if (node.kind !== "block" || node.stack === null || isAdded(node) || canvas.collapsed.has(node.stack)) return [];
+    return [[node.stack, padded(node.box, STACK_PADDING)]];
   });
 }
 

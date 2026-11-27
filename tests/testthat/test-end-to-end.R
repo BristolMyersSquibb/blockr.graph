@@ -103,7 +103,7 @@ test_that("the DAG keeps where a drag moves a block once the drag ends", {
   )
 })
 
-test_that("a block dropped on another stack's box joins it in one step", {
+test_that("a block dropped on another stack's shape joins it in one step", {
 
   app <- local_example_app("stacks")
   wait_for_dag(app)
@@ -113,7 +113,7 @@ test_that("a block dropped on another stack's box joins it in one step", {
   drag_mouse(
     app,
     center_of(app, mark_js("head")),
-    center_of(app, stack_js("joins"))
+    shape_point(app, "cw")
   )
 
   wait_until(
@@ -289,8 +289,9 @@ test_that("Ctrl+C and Ctrl+V paste the block near the middle, on nothing", {
   expect_identical(app_board(app)[["blocks"]][[added]][["name"]], "Dataset")
 
   # The view's middle lies in the box of the stack Joins, so the block lands
-  # at the free spot nearest the middle, whose node meets no other node, the
-  # box of a stack included.
+  # at the free spot nearest the middle, whose node meets no other node and
+  # no stack's shape. The shape takes the pointer, so the points of the
+  # pasted node that lie in it find it among the elements under them.
   expect_lte(sqrt(sum((app_position(app, added) - middle)^2)), 250)
   met <- app$get_js(
     sprintf(
@@ -300,11 +301,24 @@ test_that("Ctrl+C and Ctrl+V paste the block near the middle, on nothing", {
         ];
         const box = (n) => n.getBoundingClientRect();
         const pasted = box(nodes.find((n) => n.dataset.id === 'b:%s'));
-        return nodes.filter((n) => n.dataset.id !== 'b:%s').filter((n) => {
+        const boxed = nodes.filter((n) => n.dataset.id !== 'b:%s').filter(
+          (n) => n.querySelector('.blockr-graph-stack-shape') === null
+        ).filter((n) => {
           const r = box(n);
           return r.left < pasted.right && pasted.left < r.right &&
             r.top < pasted.bottom && pasted.top < r.bottom;
         }).map((n) => n.dataset.id);
+        const shaped = [0, 0.5, 1].flatMap((i) => [0, 0.5, 1].flatMap((j) =>
+          document.elementsFromPoint(
+            pasted.left + i * pasted.width,
+            pasted.top + j * pasted.height
+          ).flatMap((el) => {
+            const shape = el.closest('.blockr-graph-stack-shape');
+            return shape === null ? [] :
+              [shape.closest('.react-flow__node').dataset.id];
+          })
+        ));
+        return [...new Set([...boxed, ...shaped])];
       })()",
       added,
       added
@@ -412,7 +426,7 @@ test_that("under the board lock, a drag moves blocks and changes no more", {
   drag_mouse(
     app,
     center_of(app, mark_js("head")),
-    center_of(app, stack_js("joins"))
+    shape_point(app, "cw")
   )
 
   wait_until(

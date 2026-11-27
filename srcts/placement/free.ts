@@ -1,8 +1,9 @@
 // Where what a paste or a board action adds lands, from the point at which the
 // user pastes or adds it: at the spot nearest the point at which it keeps the
-// spacing's gap from every node and every stack's box that the canvas shows
+// spacing's gap from every node that the canvas shows, and from the padding
+// around every block of an expanded stack, which the stack's shape holds
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.1#placing-added-blocks).
-// So no block lands on another, or in the box of a stack that does not hold
+// So no block lands on another, or in the shape of a stack that does not hold
 // it, and nothing has to make room for it.
 //
 // The DAG tries offsets on a grid, nearest first, and keeps the first at which
@@ -11,7 +12,7 @@
 // Where no spot within REACH is free, what lands stays at the point, and the
 // placement strategy fits it in as it fits in any addition.
 
-import { canvasNodes, expandedBox, gapOf, overlaps, shifted } from "../geometry/index.ts";
+import { canvasNodes, gapOf, overlaps, paddedBoxes, shifted } from "../geometry/index.ts";
 import type { Box, Canvas } from "../geometry/index.ts";
 import type { Layout, Point } from "../state/index.ts";
 
@@ -20,14 +21,13 @@ import type { Layout, Point } from "../state/index.ts";
 const STEP = 10;
 const REACH = 1000;
 
-// The boxes that the canvas shows: the box of every node, and of every
-// expanded stack, whose blocks are nodes of their own.
+// The boxes that the canvas shows: the box of every node, and of every block
+// of an expanded stack with the padding, which the stack's shape holds.
 export function shownBoxes(canvas: Canvas): Box[] {
   const boxes = canvasNodes(canvas).map((node) => node.box);
   for (const stack of Object.keys(canvas.board.stacks)) {
     if (canvas.collapsed.has(stack) || canvas.points[stack] !== undefined) continue;
-    const box = expandedBox(canvas, stack);
-    if (box !== undefined) boxes.push(box);
+    boxes.push(...paddedBoxes(canvas, stack));
   }
   return boxes;
 }

@@ -9,7 +9,9 @@
 // - A stack is a group node behind its blocks: its box fits its blocks, and
 //   each of its blocks gives React Flow its position relative to the box's
 //   top left corner, as React Flow takes the position of a node with a
-//   parentId. A collapsed stack, and a stack that holds no block, is a node
+//   parentId. The node draws the stack's shape within the box (../shape),
+//   which alone takes the pointer, with the stack's name above the topmost of
+//   its blocks. A collapsed stack, and a stack that holds no block, is a node
 //   of the box that holds its name and the number of its blocks, and the
 //   blocks of a collapsed stack get no node.
 // - A link is an edge from the result of the block that it comes from into
@@ -38,8 +40,9 @@
 import type { BlockId, BlockRegistry, Board, LinkId, RegistryEntry, StackId } from "@blockr/core";
 import { Position } from "../flow/index.ts";
 import type { Edge, Node, NodeHandle } from "../flow/index.ts";
-import { BLOCK_HEIGHT, blockWidth, MARK, shownBox, stackOf } from "../geometry/index.ts";
-import type { Box, Canvas } from "../geometry/index.ts";
+import { BLOCK_HEIGHT, blockWidth, boxOfBlock, MARK, NO_CHANGES, shownBox, STACK_PADDING, stackOf } from "../geometry/index.ts";
+import type { Box, Canvas, Changes } from "../geometry/index.ts";
+import { shapePath, stackShape } from "../shape/index.ts";
 import type { Layout, Point } from "../state/index.ts";
 import { blockNode, linkEdge, stackNode } from "./ids.ts";
 
@@ -121,10 +124,16 @@ export interface StackData extends Record<string, unknown> {
   readonly color: string | null;
   // The number of its blocks.
   readonly count: number;
-  // Whether it shows as a box around its blocks, as a collapsed stack, or as
-  // a stack that holds no block.
+  // Whether it shows as a shape around its blocks, as a collapsed stack, or
+  // as a stack that holds no block.
   readonly shows: "expanded" | "collapsed" | "empty";
   readonly handles: readonly HandleSpec[];
+  // The SVG path of the shape of an expanded stack, from the top left corner
+  // of its box, or "" for a stack that shows no shape.
+  readonly shape: string;
+  // How far from the left edge of the box the name of an expanded stack
+  // starts: where the padding around the topmost of its blocks starts.
+  readonly nameAt: number;
 }
 
 export interface LinkData extends Record<string, unknown> {
@@ -160,6 +169,9 @@ export interface Drawing {
   // The side of a node, by the node's id, whose crowded handles spread out,
   // as while the pointer is over one of them, or null for none.
   readonly spread: { readonly node: string; readonly side: Side } | null;
+  // What the drag that goes on moves, which the shapes of stacks do not keep
+  // clear of, or nothing where no drag goes on.
+  readonly dragging?: Changes;
 }
 
 // Where a block shows: in its own node, centred at its position, or in the
@@ -180,7 +192,7 @@ interface DrawnLink {
 }
 
 export function elementsOf(drawing: Drawing): Elements {
-  const { canvas, registry, layout, selected, hovered, locked, spread } = drawing;
+  const { canvas, registry, layout, selected, hovered, locked, spread, dragging = NO_CHANGES } = drawing;
   const { board } = canvas;
   const held = stackOf(board);
   const boxes = new Map<StackId, Box>();
@@ -216,6 +228,8 @@ export function elementsOf(drawing: Drawing): Elements {
     if (box === undefined) continue;
     const shows = stack.blocks.length === 0 ? "empty" : canvas.collapsed.has(id) ? "collapsed" : "expanded";
     const handles = shows === "collapsed" ? stackHandles(box, links, stackNode(id)) : [];
+    const corner = { x: box.x - box.w / 2, y: box.y - box.h / 2 };
+    const shape = shows === "expanded" ? stackShape(canvas, id, dragging) : undefined;
     stackNodes.push({
       id: stackNode(id),
       type: "stack",
@@ -225,7 +239,18 @@ export function elementsOf(drawing: Drawing): Elements {
       measured: { width: box.w, height: box.h },
       handles: handles.map(nodeHandle),
       selected: selected.has(stackNode(id)),
-      data: { kind: "stack", stack: id, name: stack.name, color: stack.color, count: stack.blocks.length, shows, handles },
+      ...(shape === undefined ? {} : { style: { pointerEvents: "none" } }),
+      data: {
+        kind: "stack",
+        stack: id,
+        name: stack.name,
+        color: stack.color,
+        count: stack.blocks.length,
+        shows,
+        handles,
+        shape: shape === undefined ? "" : shapePath(shape, corner),
+        nameAt: shape === undefined ? 0 : nameAt(canvas, id, corner),
+      },
     });
   }
 
@@ -272,6 +297,17 @@ export function elementsOf(drawing: Drawing): Elements {
   });
 
   return { nodes, edges };
+}
+
+// How far from the left edge of a stack's box, whose top left corner is
+// given, the padding around the topmost of the stack's blocks starts, and of
+// two as high, the leftmost.
+function nameAt(canvas: Canvas, stack: StackId, corner: Point): number {
+  const boxes = (canvas.board.stacks[stack]?.blocks ?? []).flatMap((block) => boxOfBlock(canvas, block) ?? []);
+  const top = (box: Box) => box.y - box.h / 2;
+  const left = (box: Box) => box.x - box.w / 2;
+  const [first] = boxes.sort((a, b) => top(a) - top(b) || left(a) - left(b));
+  return first === undefined ? 0 : Math.max(0, left(first) - STACK_PADDING - corner.x);
 }
 
 // The box with its width and its height rounded up to whole pixels, around

@@ -4,7 +4,7 @@
 import type { Board, Delta } from "@blockr/core";
 import { describe, expect, test } from "vitest";
 import { collapse, expand } from "../collapse/index.ts";
-import { canvasOf, distance, gapOf, shownBox } from "../geometry/index.ts";
+import { boxOfBlock, canvasOf, distance, gapOf, overlaps, shownBox } from "../geometry/index.ts";
 import { layOut, loadDagre } from "../layout/index.ts";
 import { GRAPH, isPoint } from "../state/index.ts";
 import type { Layout, Point } from "../state/index.ts";
@@ -146,13 +146,26 @@ describe("making room around the stacks that a step grows or forms", () => {
     state: { positions: { iris: at(0, 0), head: at(0, 150), bound: at(0, 300), bod: at(300, 0), cw: at(450, 0), joined: at(375, 150) } },
   };
 
-  test("moves the blocks that a stack's box grows over off it, and leaves the stack where it is", () => {
+  test("moves none of the blocks that a stack's box grows over, where they keep the gap from the padding around each of its blocks", () => {
     const before = boardOf(example);
     const board = boardOf({ ...example, stacks: { joins: ["bod", "cw", "joined", "bound"] } });
-    expect(intruders(canvasOf(board, stateOf(board)))).toEqual([
-      ["block:iris", "joins"],
-      ["block:head", "joins"],
-    ]);
+    // Once Rbind joins Joins, the box of Joins holds Dataset and Head, but its
+    // shape holds neither, as neither lies within the gap of the padding
+    // around a block of Joins.
+    const canvas = canvasOf(board, stateOf(board));
+    const box = shownBox(canvas, "joins");
+    if (box === undefined) throw new Error("no box");
+    for (const block of ["iris", "head"]) expect(overlaps(boxOfBlock(canvas, block) ?? box, box)).toBe(true);
+    expect(intruders(canvas, gap - 0.5)).toEqual([]);
+    expect(stepped(board, before)).toEqual(board);
+  });
+
+  test("moves the blocks within the gap of the padding around a block that joins a stack off it, and leaves the stack where it is", () => {
+    // Head sits 28 px above Rbind, which then joins Joins.
+    const spec: BoardSpec = { ...example, state: { positions: { ...example.state?.positions, head: at(0, 220) } } };
+    const before = boardOf(spec);
+    const board = boardOf({ ...spec, stacks: { joins: ["bod", "cw", "joined", "bound"] } });
+    expect(intruders(canvasOf(board, stateOf(board)), gap - 0.5)).toEqual([["block:head", "joins"]]);
     const after = stepped(board, before);
     expect(intruders(canvasOf(after, stateOf(after)), gap - 0.5)).toEqual([]);
     const joins = ["bod", "cw", "joined", "bound"];
@@ -160,7 +173,7 @@ describe("making room around the stacks that a step grows or forms", () => {
     expect(reshaped(canvasOf(before, stateOf(before)), canvasOf(after, stateOf(after)))).toEqual([]);
   });
 
-  test("moves a stack that a stack's box grows towards off it, as one", () => {
+  test("moves a stack that a stack's shape grows towards off it, as one", () => {
     const spec: BoardSpec = {
       blocks: { a: "A", b: "B", c: "C", d: "D" },
       stacks: { s1: ["a", "b"], s2: ["c", "d"] },
@@ -178,16 +191,27 @@ describe("making room around the stacks that a step grows or forms", () => {
     expect(stateOf(after).positions.c?.x).toBeGreaterThan(300);
   });
 
-  test("moves what lies in the box of a stack that the step forms off it, and what lies within the gap of it", () => {
+  test("moves what lies within the gap of the padding around a block of a stack that the step forms off it", () => {
+    const spec: BoardSpec = {
+      blocks: { x: "X", y: "Y", z: "Z", w: "W" },
+      state: { positions: { x: at(0, 0), z: at(100, 0), y: at(300, 0), w: at(150, 100) } },
+    };
+    const before = boardOf(spec);
+    const board = boardOf({ ...spec, stacks: { s: ["x", "y"] } });
+    expect(intruders(canvasOf(board, stateOf(board)), gap - 0.5)).toEqual([["block:z", "s"]]);
+    const after = stepped(board, before);
+    expect(intruders(canvasOf(after, stateOf(after)), gap - 0.5)).toEqual([]);
+    expect(positions(after, ["x", "y"])).toEqual([at(0, 0), at(300, 0)]);
+  });
+
+  test("leaves what lies between the blocks of a stack that the step forms, where it keeps the gap from the padding around each", () => {
     const spec: BoardSpec = {
       blocks: { x: "X", y: "Y", z: "Z", w: "W" },
       state: { positions: { x: at(0, 0), z: at(150, 0), y: at(300, 0), w: at(150, 100) } },
     };
     const before = boardOf(spec);
     const board = boardOf({ ...spec, stacks: { s: ["x", "y"] } });
-    const after = stepped(board, before);
-    expect(intruders(canvasOf(after, stateOf(after)), gap - 0.5)).toEqual([]);
-    expect(positions(after, ["x", "y"])).toEqual([at(0, 0), at(300, 0)]);
+    expect(stepped(board, before)).toEqual(board);
   });
 
   test("moves the blocks of a stack that the step leaves without blocks off its box", () => {
@@ -204,7 +228,7 @@ describe("making room around the stacks that a step grows or forms", () => {
     }
   });
 
-  test("moves a stack aside as one, where Repulsion places a block that the step adds in its box", () => {
+  test("moves a stack aside as one, where Repulsion places a block that the step adds between two of its blocks, too close to both", () => {
     const spec: BoardSpec = {
       blocks: { u: "U", w: "W" },
       stacks: { s: ["u", "w"] },

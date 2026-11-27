@@ -28,17 +28,20 @@ describe("what lands near a point", () => {
     expect(landing({ blocks: { a: "A" }, state: { positions: { a: { x: 0, y: 0 } } } }, { x: 0, y: 0 })).toEqual({ x: -110, y: 0 });
   });
 
-  test("moves out of the box of a stack that does not hold it, though it keeps the gap from the stack's blocks", () => {
+  test("keeps the gap from the padding around each block of a stack that does not hold it, but not from the stack's box", () => {
     const stacked: BoardSpec = {
       blocks: { a: "A", b: "B" },
       stacks: { s: ["a", "b"] },
       state: { positions: { a: { x: 0, y: 0 }, b: { x: 400, y: 0 } } },
     };
-    // The stack's box spans its blocks with 20 px around them, 92 px tall, so
-    // the node clears it 46 + 26 + 70 = 142 px above its middle, which the
-    // grid rounds up to 150.
-    expect(landing(stacked, { x: 200, y: 0 })).toEqual({ x: 0, y: -150 });
-    expect(landing({ ...stacked, stacks: {} }, { x: 200, y: 0 })).toEqual({ x: 0, y: 0 });
+    // Between the blocks, the node keeps the gap from the padding of 20 px
+    // around each, so it stays where it lands, in the stack's box.
+    expect(landing(stacked, { x: 200, y: 0 })).toEqual({ x: 0, y: 0 });
+    // Beside block a, the node keeps the gap from the padding around a at
+    // 16 + 20 + 70 + 16 = 122 px from a's middle, which the grid rounds up
+    // to 130, where it keeps 32 + 70 = 102 px from a without the stack.
+    expect(landing(stacked, { x: 100, y: 0 })).toEqual({ x: 30, y: 0 });
+    expect(landing({ ...stacked, stacks: {} }, { x: 100, y: 0 })).toEqual({ x: 10, y: 0 });
   });
 
   test("keeps the gap with every box of what lands, which moves as one", () => {

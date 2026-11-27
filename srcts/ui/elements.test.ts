@@ -5,6 +5,7 @@ import type { BlockRegistry, Board, RegistryEntry } from "@blockr/core";
 import { describe, expect, test } from "vitest";
 import { Position } from "../flow/index.ts";
 import { BLOCK_HEIGHT, blockWidth, canvasOf, changed, expandedBox, MARK, STACK_HEIGHT, STACK_WIDTH } from "../geometry/index.ts";
+import { shapePath, stackShape } from "../shape/index.ts";
 import { defaultState, GRAPH } from "../state/index.ts";
 import type { GraphState, Layout } from "../state/index.ts";
 import { boardOf, withState } from "../testing/index.ts";
@@ -424,6 +425,49 @@ describe("a stack", () => {
     expect(s2.position).toEqual({ x: 500, y: 0 });
     expect([s2.width, s2.height]).toEqual([STACK_WIDTH, STACK_HEIGHT]);
     expect(s2.data).toMatchObject({ shows: "empty", count: 0, name: "Empty", color: "#66c2a5", handles: [] });
+  });
+
+  test("that the DAG shows expanded draws its shape in its box, which alone takes the pointer, with its name above its topmost block", () => {
+    const board = stacked({});
+    const canvas = canvasOf(board, board.plugins[GRAPH] as GraphState);
+    const s1 = stackNode(drawn(board).nodes, "s1");
+    const box = expandedBox(canvas, "s1");
+    const shape = stackShape(canvas, "s1");
+    if (box === undefined || shape === undefined) throw new Error("No shape");
+    expect(s1.data.shape).toBe(shapePath(shape, { x: box.x - box.w / 2, y: box.y - box.h / 2 }));
+    expect(s1.data.shape).toMatch(/^M.+Z$/);
+    expect(s1.data.nameAt).toBe(0);
+    expect(s1.style).toEqual({ pointerEvents: "none" });
+  });
+
+  test("starts its name where the padding around its topmost block starts", () => {
+    const board = boardOf({
+      blocks: { p: "P", q: "Q" },
+      stacks: { s: ["q", "p"] },
+      state: { positions: { p: { x: 200, y: 0 }, q: { x: 0, y: 200 } } },
+    });
+    // Block p's padding starts 200 - 16 - 20 = 164 px from the middle of q,
+    // whose padding starts the box at -36.
+    expect(stackNode(drawn(board).nodes, "s").data.nameAt).toBe(200);
+  });
+
+  test("that is collapsed, or holds no block, draws no shape, and takes the pointer on all its box", () => {
+    const collapsed = withState(stacked({}), { stacks: { s1: { collapsed: 1, moved: { positions: {}, stacks: {} } } } });
+    const s1 = stackNode(drawn(collapsed).nodes, "s1");
+    expect(s1.data.shape).toBe("");
+    expect(s1.style).toBeUndefined();
+  });
+
+  test("draws its shape clear of the nodes around it, but for those that a drag moves", () => {
+    const board = stacked({});
+    const state = board.plugins[GRAPH] as GraphState;
+    const canvas = canvasOf(board, state);
+    const dragging = { positions: { d: { x: 300, y: 150 } }, points: {} };
+    const { nodes } = elementsOf({ canvas, registry: REGISTRY, layout: state.layout, selected: new Set(), hovered: null, locked: false, spread: null, dragging });
+    const box = expandedBox(canvas, "s1");
+    const shape = stackShape(canvas, "s1", dragging);
+    if (box === undefined || shape === undefined) throw new Error("No shape");
+    expect(stackNode(nodes, "s1").data.shape).toBe(shapePath(shape, { x: box.x - box.w / 2, y: box.y - box.h / 2 }));
   });
 
   test("draws its box around the moves that the DAG keeps while the user drags", () => {

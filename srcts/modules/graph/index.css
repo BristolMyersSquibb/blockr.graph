@@ -286,9 +286,11 @@
 }
 
 /*
- * A stack: a box behind its blocks in its colour, with its name above it, or
- * the small box of a collapsed stack or of a stack that holds no block, which
- * holds its name and the number of its blocks.
+ * A stack: a shape behind its blocks in its colour, with its name above the
+ * topmost of them, or the small box of a collapsed stack or of a stack that
+ * holds no block, which holds its name and the number of its blocks.
+ * The node of an expanded stack takes no pointer, so that a press beside its
+ * shape lands on what lies under it, while the shape and the name take it.
  */
 .blockr-graph-stack {
   position: relative;
@@ -300,21 +302,54 @@
   background: color-mix(in oklab, var(--blockr-graph-stack-color) 7%, transparent);
 }
 
+.blockr-graph-stack[data-shows="expanded"] {
+  border: none;
+  background: none;
+}
+
 .blockr-graph-stack[data-shows="empty"] {
   border-style: dashed;
 }
 
-.blockr-graph-stack[data-selected] {
+.blockr-graph-stack[data-selected]:not([data-shows="expanded"]) {
   outline: 2px solid var(--bk-color-primary);
   outline-offset: 2px;
 }
 
-.blockr-graph-stack-name {
+.blockr-graph-stack-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.blockr-graph-stack-shape path {
+  fill: color-mix(in oklab, var(--blockr-graph-stack-color) 7%, transparent);
+  stroke: var(--blockr-graph-stack-color);
+  stroke-width: 1.5px;
+  pointer-events: visiblePainted;
+}
+
+.blockr-graph-stack[data-selected] .blockr-graph-stack-shape path {
+  stroke: var(--bk-color-primary);
+  stroke-width: 2.5px;
+}
+
+.blockr-graph-stack-head {
   position: absolute;
   bottom: 100%;
-  left: 4px;
-  max-width: calc(100% - 8px);
+  left: calc(var(--blockr-graph-stack-name-at) + 4px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - var(--blockr-graph-stack-name-at) - 8px);
   margin-bottom: 3px;
+  pointer-events: auto;
+}
+
+.blockr-graph-stack-name {
   overflow: hidden;
   font-size: 12px;
   font-weight: 600;
@@ -361,6 +396,11 @@
 .blockr-graph-stack:not([data-shows="expanded"]) .blockr-graph-collapse {
   top: calc(50% - 10px);
   right: 6px;
+}
+
+.blockr-graph .blockr-graph-stack-head .blockr-graph-collapse {
+  position: static;
+  flex: none;
 }
 
 .blockr-graph-collapse svg[data-collapsed] {

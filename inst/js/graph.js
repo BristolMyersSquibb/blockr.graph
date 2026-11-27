@@ -565,6 +565,12 @@ function expandedBox(canvas, stack2) {
   const box = bounds(blocks.flatMap((block) => boxOfBlock(canvas, block) ?? []));
   return box === void 0 ? void 0 : padded(box, STACK_PADDING);
 }
+function paddedBoxes(canvas, stack2) {
+  return (canvas.board.stacks[stack2]?.blocks ?? []).flatMap((block) => {
+    const box = boxOfBlock(canvas, block);
+    return box === void 0 ? [] : [padded(box, STACK_PADDING)];
+  });
+}
 function shownBox(canvas, stack2) {
   const point = canvas.points[stack2];
   if (point !== void 0) return stackBoxAt(point);
@@ -679,14 +685,9 @@ function beside(canvas, added, gap) {
   return { positions: {}, points: {} };
 }
 function stackBoxes(canvas, nodes, isAdded) {
-  const held = /* @__PURE__ */ new Map();
-  for (const node of nodes) {
-    if (node.kind !== "block" || node.stack === null || isAdded(node)) continue;
-    held.set(node.stack, [...held.get(node.stack) ?? [], node.box]);
-  }
-  return [...held].flatMap(([stack2, boxes]) => {
-    const box = bounds(boxes);
-    return box === void 0 || canvas.collapsed.has(stack2) ? [] : [[stack2, padded(box, STACK_PADDING)]];
+  return nodes.flatMap((node) => {
+    if (node.kind !== "block" || node.stack === null || isAdded(node) || canvas.collapsed.has(node.stack)) return [];
+    return [[node.stack, padded(node.box, STACK_PADDING)]];
   });
 }
 function* rings(step) {
@@ -708,8 +709,7 @@ function shownBoxes(canvas) {
   const boxes = canvasNodes(canvas).map((node) => node.box);
   for (const stack2 of Object.keys(canvas.board.stacks)) {
     if (canvas.collapsed.has(stack2) || canvas.points[stack2] !== void 0) continue;
-    const box = expandedBox(canvas, stack2);
-    if (box !== void 0) boxes.push(box);
+    boxes.push(...paddedBoxes(canvas, stack2));
   }
   return boxes;
 }
@@ -762,10 +762,18 @@ function project(bodies, targets, gap, smoothing = 1) {
   const sat = bodies.map((body2) => ({ x: body2.x, y: body2.y, w: body2.w, h: body2.h }));
   const body = (i) => bodies[i] ?? { x: 0, y: 0, w: 0, h: 0, holder: null };
   const isFixed = (i) => body(i).fixed !== void 0;
-  const pad = (i) => body(i).holder === null ? 0 : STACK_PADDING;
   const at2 = (axis, i) => body(i)[axis];
   const goal = { x: targets.map((t, i) => isFixed(i) ? body(i).x : t.x), y: targets.map((t, i) => isFixed(i) ? body(i).y : t.y) };
   const now = { x: bodies.map((b) => b.x), y: bodies.map((b) => b.y) };
+  const groupOf = (i) => body(i).asOne === true ? body(i).holder : null;
+  const together = (i, j) => groupOf(i) !== null && groupOf(i) === groupOf(j);
+  const groups = /* @__PURE__ */ new Map();
+  for (let i = 0; i < n; i++) {
+    const group = groupOf(i);
+    if (group !== null) groups.set(group, [...groups.get(group) ?? [], i]);
+  }
+  const groupBoxes = new Map([...groups].map(([group, of]) => [group, bounds(of.map((i) => sat[i] ?? NONE)) ?? NONE]));
+  const pad = (i) => body(i).holder === null || body(i).asOne === true ? 0 : STACK_PADDING;
   const need = (i, j, axis) => {
     const [a, b] = [body(i), body(j)];
     const size = axis === "x" ? a.w + b.w : a.h + b.h;
@@ -773,8 +781,9 @@ function project(bodies, targets, gap, smoothing = 1) {
     return size / 2 + gap + padding;
   };
   const rank = { x: ranks(bodies.map((b) => b.x)), y: ranks(bodies.map((b) => b.y)) };
+  const before = (axis, i, j) => (rank[axis][i] ?? 0) < (rank[axis][j] ?? 0);
   const constraints = { x: /* @__PURE__ */ new Map(), y: /* @__PURE__ */ new Map() };
-  const key = (axis, i, j) => (rank[axis][i] ?? 0) < (rank[axis][j] ?? 0) ? i * n + j : j * n + i;
+  const key = (axis, i, j) => before(axis, i, j) ? i * n + j : j * n + i;
   const kept2 = (axis, i, j) => constraints[axis].get(key(axis, i, j)) ?? -Infinity;
   const keep = (axis, i, j, sep) => {
     constraints[axis].set(key(axis, i, j), Math.max(kept2(axis, i, j), sep));
@@ -788,12 +797,65 @@ function project(bodies, targets, gap, smoothing = 1) {
     const want = need(i, j, axis);
     return { axis, sep: full ? want : Math.min(want, had) };
   };
+  const boxed = /* @__PURE__ */ new Set();
+  const fits2 = (i, group, axis) => {
+    let [least, most] = [-Infinity, Infinity];
+    for (const j of groups.get(group) ?? []) {
+      const sep = constraints[axis].get(key(axis, i, j));
+      if (sep === void 0) continue;
+      if (before(axis, j, i)) least = Math.max(least, at2(axis, j) + sep);
+      else most = Math.min(most, at2(axis, j) - sep);
+    }
+    return least <= most + SLACK;
+  };
+  const box = (i, group, held) => {
+    boxed.add(`${String(i)}:${group}`);
+    const of = groups.get(group) ?? [];
+    for (const j of of) {
+      for (const axis2 of AXES) constraints[axis2].delete(key(axis2, i, j));
+    }
+    const [first] = of;
+    const around = groupBoxes.get(group);
+    if (first === void 0 || around === void 0) return;
+    const order = (axis2, sep) => {
+      const off2 = around[axis2] - at2(axis2, first);
+      const after = at2(axis2, i) > around[axis2] || at2(axis2, i) === around[axis2] && i > first;
+      if (after) constraints[axis2].set(first * n + i, Math.max(constraints[axis2].get(first * n + i) ?? -Infinity, off2 + sep));
+      else constraints[axis2].set(i * n + first, Math.max(constraints[axis2].get(i * n + first) ?? -Infinity, sep - off2));
+    };
+    const axis = held === "x" ? "y" : "x";
+    const off = apart(sat[i] ?? NONE, around);
+    const push = body(i).fixed ?? body(first).fixed;
+    const full = push === "all" || push === "inside" && off.x < 0 && off.y < 0;
+    const size = axis === "x" ? body(i).w + around.w : body(i).h + around.h;
+    const want = size / 2 + gap + pad(i);
+    const had = Math.abs(at2(axis, i) - around[axis]);
+    order(axis, full ? want : Math.min(want, had));
+    if (isFixed(i) || isFixed(first)) return;
+    for (const along of AXES) {
+      if (Math.abs(at2(along, i) - around[along]) >= gap / 2) order(along, gap / 2);
+    }
+  };
+  const check = (i, j) => {
+    const group = groupOf(j);
+    if (group === null || groupOf(i) === group || boxed.has(`${String(i)}:${group}`)) return false;
+    const held = AXES.find((axis) => !fits2(i, group, axis));
+    if (held === void 0) return false;
+    box(i, group, held);
+    return true;
+  };
+  const viaBox = (i, j) => {
+    const [gi, gj] = [groupOf(i), groupOf(j)];
+    return gj !== null && boxed.has(`${String(i)}:${gj}`) || gi !== null && boxed.has(`${String(j)}:${gi}`);
+  };
   const near = bodies.map(() => []);
+  const pairs = [];
   for (const [i, j] of closePairs(sat, 2 * gap)) {
-    if (isFixed(i) && isFixed(j)) continue;
+    if (isFixed(i) && isFixed(j) || together(i, j)) continue;
     if (distance(sat[i] ?? NONE, sat[j] ?? NONE) >= 2 * gap) continue;
     near[i]?.push(j);
     near[j]?.push(i);
+    pairs.push([i, j]);
     const { axis, sep } = separation(i, j);
     keep(axis, i, j, sep);
     if (isFixed(i) || isFixed(j)) continue;
@@ -801,28 +863,9 @@ function project(bodies, targets, gap, smoothing = 1) {
       if (Math.abs(at2(ordered, i) - at2(ordered, j)) >= gap / 2) keep(ordered, i, j, gap / 2);
     }
   }
-  const members = /* @__PURE__ */ new Map();
-  for (const [i, b] of bodies.entries()) {
-    if (b.holder !== null && b.fixed === void 0) members.set(b.holder, [...members.get(b.holder) ?? [], i]);
-  }
-  const boxOf = (of, where) => padded(bounds(of.map(where)) ?? NONE, STACK_PADDING);
-  const satBoxes = new Map([...members].map(([stack2, of]) => [stack2, boxOf(of, (i) => sat[i] ?? NONE)]));
-  const guard = (stack2, i) => {
-    const off = apart(sat[i] ?? NONE, satBoxes.get(stack2) ?? NONE);
-    const axis = off.x >= off.y ? "x" : "y";
-    let added = 0;
-    for (const j of members.get(stack2) ?? []) {
-      const sep = Math.min(need(i, j, axis), Math.abs(at2(axis, i) - at2(axis, j)));
-      if (kept2(axis, i, j) >= sep - SLACK) continue;
-      keep(axis, i, j, sep);
-      added++;
-    }
-    return added;
-  };
-  for (const [stack2, box] of satBoxes) {
-    for (let i = 0; i < n; i++) {
-      if (body(i).holder !== stack2 && distance(sat[i] ?? NONE, box) < 2 * gap) guard(stack2, i);
-    }
+  for (const [i, j] of pairs) {
+    check(i, j);
+    check(j, i);
   }
   const solve = (axis) => {
     const vars = bodies.map((_, i) => new Variable(goal[axis][i] ?? 0, isFixed(i) ? FIXED_WEIGHT : 1));
@@ -830,6 +873,15 @@ function project(bodies, targets, gap, smoothing = 1) {
       const [left, right] = [vars[Math.floor(k / n)], vars[k % n]];
       return left === void 0 || right === void 0 ? [] : [new Constraint(left, right, sep)];
     });
+    for (const of of groups.values()) {
+      const [first] = of;
+      if (first === void 0 || isFixed(first)) continue;
+      for (const j of of.slice(1)) {
+        const [left, right] = before(axis, first, j) ? [first, j] : [j, first];
+        const [a, b] = [vars[left], vars[right]];
+        if (a !== void 0 && b !== void 0) held.push(new Constraint(a, b, at2(axis, right) - at2(axis, left), true));
+      }
+    }
     new Solver(vars, held).solve();
     for (const [i, v] of vars.entries()) now[axis][i] = v.position();
   };
@@ -840,31 +892,27 @@ function project(bodies, targets, gap, smoothing = 1) {
       const boxes = bodies.map((b, i) => ({ x: now.x[i] ?? b.x, y: now.y[i] ?? b.y, w: b.w, h: b.h }));
       let added = 0;
       for (const [i, j] of closePairs(boxes, gap + 2 * STACK_PADDING)) {
-        if (isFixed(i) && isFixed(j)) continue;
+        if (isFixed(i) && isFixed(j) || together(i, j) || viaBox(i, j)) continue;
         const close = AXES.every((axis2) => Math.abs((now[axis2][i] ?? 0) - (now[axis2][j] ?? 0)) < need(i, j, axis2) - SLACK);
         if (!close) continue;
         const { axis, sep } = separation(i, j);
         if (kept2(axis, i, j) >= sep - SLACK) continue;
         keep(axis, i, j, sep);
         added++;
-      }
-      for (const [stack2, of] of members) {
-        const box = boxOf(of, (i) => boxes[i] ?? NONE);
-        for (const [i, b] of boxes.entries()) {
-          if (body(i).holder !== stack2 && overlaps(b, box)) added += guard(stack2, i);
-        }
+        check(i, j);
+        check(j, i);
       }
       if (added === 0) break;
     }
   };
   for (let pass = 0; pass <= smoothing; pass++) {
     if (pass > 0) {
-      const moves2 = { x: now.x.map((x, i) => x - body(i).x), y: now.y.map((y, i) => y - body(i).y) };
+      const moves3 = { x: now.x.map((x, i) => x - body(i).x), y: now.y.map((y, i) => y - body(i).y) };
       for (const [i, around] of near.entries()) {
         if (isFixed(i) || around.length === 0) continue;
         for (const axis of AXES) {
-          const mean = around.reduce((sum, j) => sum + (moves2[axis][j] ?? 0), 0) / around.length;
-          goal[axis][i] = at2(axis, i) + ((moves2[axis][i] ?? 0) + mean) / 2;
+          const mean = around.reduce((sum, j) => sum + (moves3[axis][j] ?? 0), 0) / around.length;
+          goal[axis][i] = at2(axis, i) + ((moves3[axis][i] ?? 0) + mean) / 2;
         }
       }
     }
@@ -904,19 +952,21 @@ function closeUp(canvas, stack2, gap) {
   return changesOf(canvas, nodes, project(bodies, [...targets, small], gap));
 }
 function clearBox(canvas, stack2, gap) {
-  const full = expandedBox(canvas, stack2);
-  if (full === void 0) return NO_CHANGES;
+  const blocks = paddedBoxes(canvas, stack2);
+  if (blocks.length === 0) return NO_CHANGES;
   const nodes = roomNodes(canvas).filter((node) => node.stack !== stack2);
-  const bodies = [...nodes.map((node) => bodyOf(node)), fixedBox(full, "inside")];
+  const fixed = blocks.map((box) => ({ ...box, holder: stack2, asOne: true, fixed: "inside" }));
+  const bodies = [...nodes.map((node) => bodyOf(node)), ...fixed];
   return changesOf(canvas, nodes, project(bodies, bodies, gap));
 }
 function makeRoom(canvas, added, moved, gap) {
   const holds2 = (stack2, of) => (canvas.board.stacks[stack2]?.blocks ?? []).some((block) => of.has(block));
   const split = new Set(Object.keys(canvas.board.stacks).filter((stack2) => !canvas.collapsed.has(stack2) && holds2(stack2, added.blocks)));
   const push = (node) => {
-    if (node.kind === "stack") {
-      if (added.stacks.has(node.id) || holds2(node.id, added.blocks)) return "all";
-      return holds2(node.id, moved) ? "none" : void 0;
+    const stack2 = asStack(node);
+    if (stack2 !== null) {
+      if (added.stacks.has(stack2) || holds2(stack2, added.blocks)) return "all";
+      return holds2(stack2, moved) ? "none" : void 0;
     }
     if (added.blocks.has(node.id)) return "all";
     return moved.has(node.id) ? "none" : void 0;
@@ -925,13 +975,14 @@ function makeRoom(canvas, added, moved, gap) {
 }
 function clearStacks(canvas, stacks, kept2, gap) {
   const nodes = roomNodes(canvas);
-  const grown = nodes.filter((node) => node.kind === "stack" && stacks.has(node.id)).map((node) => node.box);
   const holds2 = (stack2) => (canvas.board.stacks[stack2]?.blocks ?? []).some((block) => kept2.blocks.has(block));
   const push = (node) => {
-    if (node.kind === "block") return kept2.blocks.has(node.id) ? "none" : void 0;
-    if (stacks.has(node.id)) return "all";
-    return kept2.stacks.has(node.id) || holds2(node.id) ? "none" : void 0;
+    const stack2 = asStack(node);
+    if (stack2 === null) return kept2.blocks.has(node.id) ? "none" : void 0;
+    if (stacks.has(stack2)) return "all";
+    return kept2.stacks.has(stack2) || holds2(stack2) ? "none" : void 0;
   };
+  const grown = nodes.filter((node) => push(node) === "all").map((node) => node.box);
   const crowded = nodes.some((node) => push(node) === void 0 && grown.some((box) => overlaps(node.box, box, gap - LEAST)));
   return crowded ? pushing(canvas, nodes, push, gap) : NO_CHANGES;
 }
@@ -939,18 +990,26 @@ function pushing(canvas, nodes, push, gap) {
   const bodies = nodes.map((node) => bodyOf(node, push(node)));
   return changesOf(canvas, nodes, project(bodies, bodies, gap), (i) => bodies[i]?.fixed !== void 0);
 }
+function asStack(node) {
+  if (node.kind === "stack") return node.id;
+  return node.asOne ? node.stack : null;
+}
 function roomNodes(canvas, split = /* @__PURE__ */ new Set()) {
-  const apart2 = (stack2) => split.has(stack2) && !canvas.collapsed.has(stack2);
-  const blocks = canvasNodes(canvas).filter((node) => node.kind === "block" && (node.stack === null || apart2(node.stack)));
+  const blocks = canvasNodes(canvas).flatMap((node) => {
+    if (node.kind !== "block") return [];
+    if (node.stack === null || split.has(node.stack)) return [{ ...node, asOne: false }];
+    return [{ ...node, box: padded(node.box, STACK_PADDING), asOne: true }];
+  });
   const stacks = Object.keys(canvas.board.stacks).flatMap((stack2) => {
-    const box = apart2(stack2) ? void 0 : shownBox(canvas, stack2);
-    return box === void 0 ? [] : [{ kind: "stack", id: stack2, box, stack: stack2 }];
+    if (!canvas.collapsed.has(stack2) && canvas.points[stack2] === void 0) return [];
+    const box = shownBox(canvas, stack2);
+    return box === void 0 ? [] : [{ kind: "stack", id: stack2, box, stack: stack2, asOne: false }];
   });
   return [...blocks, ...stacks];
 }
 function bodyOf(node, fixed) {
   const holder = node.kind === "block" ? node.stack : null;
-  return { ...node.box, holder, ...fixed === void 0 ? {} : { fixed } };
+  return { ...node.box, holder, ...node.asOne ? { asOne: true } : {}, ...fixed === void 0 ? {} : { fixed } };
 }
 function fixedBox(box, push) {
   return { ...box, holder: null, fixed: push };
@@ -958,10 +1017,14 @@ function fixedBox(box, push) {
 function changesOf(canvas, nodes, places, skip) {
   const positions = {};
   const points2 = {};
+  const moves3 = /* @__PURE__ */ new Map();
   for (const [i, node] of nodes.entries()) {
     const place = places[i];
     if (place === void 0 || skip?.(i) === true) continue;
-    const [dx, dy] = [place.x - node.box.x, place.y - node.box.y];
+    const stack2 = node.kind === "block" ? asStack(node) : null;
+    const first = stack2 === null ? void 0 : moves3.get(stack2);
+    const [dx, dy] = first === void 0 ? [place.x - node.box.x, place.y - node.box.y] : [first.x, first.y];
+    if (stack2 !== null && first === void 0) moves3.set(stack2, { x: dx, y: dy });
     if (Math.hypot(dx, dy) < LEAST) continue;
     const changes = nodeChanges(canvas, node, shifted(node.box, dx, dy));
     Object.assign(positions, changes.positions);
@@ -1753,9 +1816,15 @@ function grownStacks(before, after) {
     if (now === void 0) continue;
     const was = shownBox(before, id);
     const filled = stack2.blocks.length > 0 !== (before.board.stacks[id]?.blocks.length ?? 0) > 0;
-    if (was === void 0 || filled || reshaped(before, after, id) && !within(now, was)) grown.add(id);
+    if (was === void 0 || filled) grown.add(id);
+    else if (reshaped(before, after, id) && reaches(before, after, id, was, now)) grown.add(id);
   }
   return grown;
+}
+function reaches(before, after, stack2, was, now) {
+  if (after.collapsed.has(stack2) || before.collapsed.has(stack2)) return !within(now, was);
+  const old = paddedBoxes(before, stack2);
+  return paddedBoxes(after, stack2).some((box) => !old.some((other) => within(box, other)));
 }
 function reshaped(before, after, stack2) {
   const was = before.board.stacks[stack2]?.blocks ?? [];
@@ -2020,6 +2089,82 @@ function useGraph() {
   return graph;
 }
 
+// srcts/shape/shape.ts
+import { BubbleSets } from "./bubblesets-0382f1ff.js";
+var REACH3 = 50;
+var STRIP = 10;
+var STRIP_REACH = 20;
+var CELL = 4;
+var SAMPLE = 4;
+var KEPT = 256;
+var OPTIONS = {
+  nodeR0: STACK_PADDING,
+  nodeR1: REACH3,
+  edgeR0: STRIP,
+  edgeR1: STRIP_REACH,
+  morphBuffer: STACK_PADDING,
+  pixelGroup: CELL
+};
+var shapes = /* @__PURE__ */ new Map();
+function stackShape(canvas, stack2, moving = NO_CHANGES) {
+  if (canvas.collapsed.has(stack2) || canvas.points[stack2] !== void 0) return void 0;
+  const members = (canvas.board.stacks[stack2]?.blocks ?? []).flatMap((block) => boxOfBlock(canvas, block) ?? []);
+  const around = bounds(members);
+  if (around === void 0) return void 0;
+  const near = { ...around, w: around.w + 4 * REACH3, h: around.h + 4 * REACH3 };
+  const others = canvasNodes(canvas).filter((node) => node.stack !== stack2 && !moves2(canvas, node, moving) && overlaps(node.box, near)).map((node) => node.box);
+  const key = JSON.stringify([members, others].map((boxes) => boxes.map(({ x, y, w, h }) => [x, y, w, h])));
+  const kept2 = shapes.get(key);
+  if (kept2 !== void 0) {
+    shapes.delete(key);
+    shapes.set(key, kept2);
+    return kept2;
+  }
+  const shape = drawn(members, others) ?? boxShape(expandedBox(canvas, stack2) ?? around);
+  shapes.set(key, shape);
+  if (shapes.size > KEPT) shapes.delete(shapes.keys().next().value ?? key);
+  return shape;
+}
+function withinShape(shape, point) {
+  let inside = false;
+  const { points: points2 } = shape;
+  for (let i = 0, j = points2.length - 1; i < points2.length; j = i++) {
+    const [a, b] = [points2[i], points2[j]];
+    if (a === void 0 || b === void 0 || a.y > point.y === b.y > point.y) continue;
+    if (point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+function shapePath(shape, origin) {
+  const at2 = (value) => String(Math.round(value * 10) / 10);
+  const points2 = shape.points.map((point) => `${at2(point.x - origin.x)},${at2(point.y - origin.y)}`);
+  return points2.length === 0 ? "" : `M${points2.join("L")}Z`;
+}
+function moves2(canvas, node, moving) {
+  if (node.kind === "block") return Object.hasOwn(moving.positions, node.id);
+  if (Object.hasOwn(moving.points, node.id)) return true;
+  return (canvas.board.stacks[node.id]?.blocks ?? []).some((block) => Object.hasOwn(moving.positions, block));
+}
+function drawn(members, others) {
+  const rect = (box) => ({ x: box.x - box.w / 2, y: box.y - box.h / 2, width: box.w, height: box.h });
+  const sets = new BubbleSets(OPTIONS);
+  sets.pushMember(...members.map(rect));
+  sets.pushNonMember(...others.map(rect));
+  const path = sets.compute().sample(SAMPLE).simplify(0).bSplines().simplify(0);
+  return path.length < 3 ? void 0 : { points: path.points.map(({ x, y }) => ({ x: x + CELL / 2, y: y + CELL / 2 })) };
+}
+function boxShape(box) {
+  const [left, right, top, bottom] = [box.x - box.w / 2, box.x + box.w / 2, box.y - box.h / 2, box.y + box.h / 2];
+  return {
+    points: [
+      { x: left, y: top },
+      { x: right, y: top },
+      { x: right, y: bottom },
+      { x: left, y: bottom }
+    ]
+  };
+}
+
 // srcts/ui/ids.ts
 function blockNode2(block) {
   return `b:${block}`;
@@ -2053,7 +2198,7 @@ var DOT_ROOM = DOT_REACH + GROWN;
 var NEXT = "next";
 var DOTS = "...";
 function elementsOf(drawing) {
-  const { canvas, registry, layout, selected, hovered, locked, spread } = drawing;
+  const { canvas, registry, layout, selected, hovered, locked, spread, dragging = NO_CHANGES } = drawing;
   const { board } = canvas;
   const held = stackOf(board);
   const boxes = /* @__PURE__ */ new Map();
@@ -2083,6 +2228,8 @@ function elementsOf(drawing) {
     if (box === void 0) continue;
     const shows = stack2.blocks.length === 0 ? "empty" : canvas.collapsed.has(id) ? "collapsed" : "expanded";
     const handles = shows === "collapsed" ? stackHandles(box, links, stackNode2(id)) : [];
+    const corner = { x: box.x - box.w / 2, y: box.y - box.h / 2 };
+    const shape = shows === "expanded" ? stackShape(canvas, id, dragging) : void 0;
     stackNodes.push({
       id: stackNode2(id),
       type: "stack",
@@ -2092,7 +2239,18 @@ function elementsOf(drawing) {
       measured: { width: box.w, height: box.h },
       handles: handles.map(nodeHandle),
       selected: selected.has(stackNode2(id)),
-      data: { kind: "stack", stack: id, name: stack2.name, color: stack2.color, count: stack2.blocks.length, shows, handles }
+      ...shape === void 0 ? {} : { style: { pointerEvents: "none" } },
+      data: {
+        kind: "stack",
+        stack: id,
+        name: stack2.name,
+        color: stack2.color,
+        count: stack2.blocks.length,
+        shows,
+        handles,
+        shape: shape === void 0 ? "" : shapePath(shape, corner),
+        nameAt: shape === void 0 ? 0 : nameAt(canvas, id, corner)
+      }
     });
   }
   const nodes = [];
@@ -2135,6 +2293,13 @@ function elementsOf(drawing) {
     };
   });
   return { nodes, edges };
+}
+function nameAt(canvas, stack2, corner) {
+  const boxes = (canvas.board.stacks[stack2]?.blocks ?? []).flatMap((block) => boxOfBlock(canvas, block) ?? []);
+  const top = (box) => box.y - box.h / 2;
+  const left = (box) => box.x - box.w / 2;
+  const [first] = boxes.sort((a, b) => top(a) - top(b) || left(a) - left(b));
+  return first === void 0 ? 0 : Math.max(0, left(first) - STACK_PADDING - corner.x);
 }
 function whole(box) {
   return { ...box, w: Math.ceil(box.w), h: Math.ceil(box.h) };
@@ -2415,21 +2580,23 @@ function keyMoves(canvas, moved, layout) {
   }
   return changes;
 }
-function joins(start2, moves2, nodes) {
+function joins(start2, moves3, nodes) {
   const held = stackOf(start2.board);
   const boxes = [];
   for (const stack2 of Object.keys(start2.board.stacks)) {
     const box = shownBox(start2, stack2);
-    if (box !== void 0) boxes.push([stack2, box]);
+    if (box === void 0) continue;
+    const shape = stackShape(start2, stack2, moves3);
+    boxes.push([stack2, box, shape === void 0 ? (point) => contains(box, point) : (point) => withinShape(shape, point)]);
   }
   const joined = /* @__PURE__ */ new Map();
   for (const node of nodes) {
     const object2 = objectOf(node);
     if (object2 === void 0 || !("block" in object2)) continue;
-    const point = moves2.positions[object2.block];
+    const point = moves3.positions[object2.block];
     if (point === void 0) continue;
     const own = held.get(object2.block);
-    const holding = boxes.filter(([stack2, box]) => stack2 !== own && contains(box, point)).sort(([, a], [, b]) => a.w * a.h - b.w * b.h);
+    const holding = boxes.filter(([stack2, , holds2]) => stack2 !== own && holds2(point)).sort(([, a], [, b]) => a.w * a.h - b.w * b.h);
     const [first] = holding;
     if (first !== void 0) joined.set(object2.block, first[0]);
   }
@@ -2438,9 +2605,9 @@ function joins(start2, moves2, nodes) {
 function contains(box, point) {
   return Math.abs(point.x - box.x) <= box.w / 2 && Math.abs(point.y - box.y) <= box.h / 2;
 }
-function movesBatch(canvas, moves2, joined = /* @__PURE__ */ new Map()) {
-  const positions = movedOnly(canvas.positions, moves2.positions);
-  const stacks = movedOnly(canvas.points, moves2.points);
+function movesBatch(canvas, moves3, joined = /* @__PURE__ */ new Map()) {
+  const positions = movedOnly(canvas.positions, moves3.positions);
+  const stacks = movedOnly(canvas.points, moves3.points);
   const batch = [];
   for (const [stack2, blocks] of joiningBlocks(canvas.board, joined)) {
     batch.push({ id: "blockr.core-change_stack", args: { id: stack2, blocks } });
@@ -2613,10 +2780,13 @@ function DrawnStack({ data, selected }) {
       className: "blockr-graph-stack",
       "data-shows": data.shows,
       "data-selected": selected ? "" : void 0,
-      style: { "--blockr-graph-stack-color": color },
+      style: { "--blockr-graph-stack-color": color, "--blockr-graph-stack-name-at": `${String(data.nameAt)}px` },
       children: data.shows === "expanded" ? /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3("span", { className: "blockr-graph-stack-name", children: data.name }),
-        collapse2
+        /* @__PURE__ */ jsx3("svg", { className: "blockr-graph-stack-shape", "aria-hidden": "true", children: /* @__PURE__ */ jsx3("path", { d: data.shape }) }),
+        /* @__PURE__ */ jsxs3("span", { className: "blockr-graph-stack-head", children: [
+          /* @__PURE__ */ jsx3("span", { className: "blockr-graph-stack-name", children: data.name }),
+          collapse2
+        ] })
       ] }) : /* @__PURE__ */ jsxs3(Fragment2, { children: [
         /* @__PURE__ */ jsxs3("span", { className: "blockr-graph-stack-title", children: [
           /* @__PURE__ */ jsx3("span", { className: "blockr-graph-stack-label", children: data.name }),
@@ -2647,12 +2817,12 @@ function Chevron({ collapsed }) {
 function selectedIds(objects) {
   return new Set(objects.flatMap((object2) => idOf(object2) ?? []));
 }
-function selectionAfter(current, drawn, changes, rectangle) {
+function selectionAfter(current, drawn2, changes, rectangle) {
   const additive = changes.every((change) => change.selected);
   const ids = /* @__PURE__ */ new Map();
   for (const object2 of current) {
     const id = idOf(object2);
-    const kept2 = id !== void 0 && drawn.has(id) ? true : additive;
+    const kept2 = id !== void 0 && drawn2.has(id) ? true : additive;
     if (kept2) ids.set(id ?? `other:${JSON.stringify(object2)}`, object2);
   }
   for (const { id, selected } of changes) {
@@ -2726,22 +2896,28 @@ function Canvas({ hovered, spread, size, onRefusal }) {
   const { layout } = state;
   const locked = core.lock.board;
   const registry = core.blockRegistry();
-  const [moves2, setMovesState] = useState(NO_MOVES);
+  const [moves3, setMovesState] = useState(NO_MOVES);
   const movesRef = useRef2(NO_MOVES);
   const setMoves = useCallback((next) => {
     movesRef.current = next;
     setMovesState(next);
   }, []);
+  const [dragged, setDraggedState] = useState(NO_MOVES);
+  const draggedRef = useRef2(NO_MOVES);
+  const setDragged = useCallback((next) => {
+    draggedRef.current = next;
+    setDraggedState(next);
+  }, []);
   const base = useMemo2(() => canvasOf(board, state), [board, state]);
-  const canvas = useMemo2(() => changed(base, moves2), [base, moves2]);
+  const canvas = useMemo2(() => changed(base, moves3), [base, moves3]);
   const selected = useMemo2(() => selectedIds(selection), [selection]);
   const { nodes, edges } = useMemo2(
-    () => elementsOf({ canvas, registry, layout, selected, hovered, locked, spread }),
-    [canvas, registry, layout, selected, hovered, locked, spread]
+    () => elementsOf({ canvas, registry, layout, selected, hovered, locked, spread, dragging: dragged }),
+    [canvas, registry, layout, selected, hovered, locked, spread, dragged]
   );
-  const drawn = useRef2({ nodes, edges });
+  const drawn2 = useRef2({ nodes, edges });
   useEffect2(() => {
-    drawn.current = { nodes, edges };
+    drawn2.current = { nodes, edges };
   }, [nodes, edges]);
   const current = useCallback(() => {
     const now = core.store.board();
@@ -2756,9 +2932,10 @@ function Canvas({ hovered, spread, size, onRefusal }) {
       } catch {
       } finally {
         setMoves(NO_MOVES);
+        setDragged(NO_MOVES);
       }
     },
-    [core, setMoves]
+    [core, setMoves, setDragged]
   );
   const drag = useRef2(null);
   const root = useRef2(null);
@@ -2783,16 +2960,16 @@ function Canvas({ hovered, spread, size, onRefusal }) {
     [flow]
   );
   const startDrag = useCallback(
-    (lead, dragged) => {
+    (lead, dragged2) => {
       clearTimeout(keyTimer.current);
       const pending = movesRef.current;
       const start2 = changed(current(), pending);
       const from = /* @__PURE__ */ new Map();
-      for (const { id } of dragged) {
+      for (const { id } of dragged2) {
         const point = centreOf(start2, id);
         if (point !== void 0) from.set(id, point);
       }
-      const first = lead ?? dragged[0]?.id;
+      const first = lead ?? dragged2[0]?.id;
       drag.current = first === void 0 ? null : { canvas: start2, pending, from, lead: first };
     },
     [current]
@@ -2802,7 +2979,7 @@ function Canvas({ hovered, spread, size, onRefusal }) {
     drag.current = null;
     if (ended === null) return;
     const now = movesRef.current;
-    const joined = locked ? /* @__PURE__ */ new Map() : joins(ended.canvas, now, ended.from.keys());
+    const joined = locked ? /* @__PURE__ */ new Map() : joins(ended.canvas, draggedRef.current, ended.from.keys());
     void runMoves(movesBatch(current(), now, joined));
   }, [current, locked, runMoves]);
   const selects = useRef2([]);
@@ -2818,8 +2995,8 @@ function Canvas({ hovered, spread, size, onRefusal }) {
     clicked.current = null;
     if (box === "ended") rectangle.current = null;
     const before = core.selection.get();
-    const ids = /* @__PURE__ */ new Set([...drawn.current.nodes.map((node) => node.id), ...drawn.current.edges.map((edge) => edge.id)]);
-    const after = changes.length === 0 ? before : selectionAfter(before, ids, changes, box === "drawing" ? { edges: drawn.current.edges } : void 0);
+    const ids = /* @__PURE__ */ new Set([...drawn2.current.nodes.map((node) => node.id), ...drawn2.current.edges.map((edge) => edge.id)]);
+    const after = changes.length === 0 ? before : selectionAfter(before, ids, changes, box === "drawing" ? { edges: drawn2.current.edges } : void 0);
     const changedSelection = !sameSelection(before, after);
     if (changedSelection) core.selection.set(after);
     if (box === "drawing") return;
@@ -2847,7 +3024,9 @@ function Canvas({ hovered, spread, size, onRefusal }) {
         const from = lead === void 0 ? void 0 : dragging.from.get(lead);
         const to = lead === void 0 ? void 0 : moved.get(lead);
         if (from !== void 0 && to !== void 0) {
-          setMoves(merged(dragging.pending, dragMoves(dragging.canvas, dragging.from.keys(), from, to, layout)));
+          const byDrag = dragMoves(dragging.canvas, dragging.from.keys(), from, to, layout);
+          setMoves(merged(dragging.pending, byDrag));
+          setDragged(byDrag);
         }
       } else if (moved.size > 0) {
         const now = movesRef.current;
@@ -2860,7 +3039,7 @@ function Canvas({ hovered, spread, size, onRefusal }) {
         scheduleSelects();
       }
     },
-    [centre, current, layout, runKeys, scheduleSelects, setMoves]
+    [centre, current, layout, runKeys, scheduleSelects, setMoves, setDragged]
   );
   const onEdgesChange = useCallback(
     (changes) => {
@@ -2876,7 +3055,7 @@ function Canvas({ hovered, spread, size, onRefusal }) {
       if (connection.fromNode === null) return;
       const { fromNode, fromHandle, toNode, toHandle, pointer: pointer2, isValid } = connection;
       if (toNode === null) {
-        const dropped2 = canvasDrop(event, drawn.current.nodes, fromNode.id, fromHandle, root.current);
+        const dropped2 = canvasDrop(event, drawn2.current.nodes, fromNode.id, fromHandle, root.current);
         if (dropped2 !== void 0) {
           void actions.trigger(dropped2.role, dropped2.target, { drop: { client: dropped2.client, canvas: connection.to } });
         }
@@ -2884,7 +3063,7 @@ function Canvas({ hovered, spread, size, onRefusal }) {
       }
       if (toHandle === null || isValid !== true) return;
       const dropped = fromHandle.type === "source" ? { source: fromNode.id, target: toNode.id, targetHandle: toHandle.id ?? "" } : { source: toNode.id, target: fromNode.id, targetHandle: fromHandle.id ?? "" };
-      const drop = linkDrop(drawn.current.nodes, dropped);
+      const drop = linkDrop(drawn2.current.nodes, dropped);
       if (drop === void 0) return;
       const refuse = (message) => {
         onRefusal({ x: pointer2.x, y: pointer2.y, message });
@@ -2945,12 +3124,12 @@ function Canvas({ hovered, spread, size, onRefusal }) {
       maxZoom: MAX_ZOOM,
       onNodesChange,
       onEdgesChange,
-      onNodeDragStart: (_event, node, dragged) => {
-        startDrag(node.id, dragged);
+      onNodeDragStart: (_event, node, dragged2) => {
+        startDrag(node.id, dragged2);
       },
       onNodeDragStop: endDrag,
-      onSelectionDragStart: (_event, dragged) => {
-        startDrag(void 0, dragged);
+      onSelectionDragStart: (_event, dragged2) => {
+        startDrag(void 0, dragged2);
       },
       onSelectionDragStop: endDrag,
       onNodeClick: (_event, node) => {
@@ -3227,8 +3406,8 @@ function objectBox(el, board, target) {
   const objects = "selection" in target ? target.selection : ["input" in target ? { block: target.block } : target];
   const stacks = stackOf(board);
   const rects = objects.flatMap((object2) => {
-    const drawn = drawnOf(el, object2, stacks);
-    return drawn === null ? [] : [drawn.getBoundingClientRect()];
+    const drawn2 = drawnOf(el, object2, stacks);
+    return drawn2 === null ? [] : [drawn2.getBoundingClientRect()];
   });
   return relative(rects);
 }

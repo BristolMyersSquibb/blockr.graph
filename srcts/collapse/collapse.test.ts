@@ -1,14 +1,14 @@
 // Collapsing and expanding stacks on the spike's layered boards, laid out
 // both ways, against the criteria that the spike fixed before it ran
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3, notes):
-// no new pair within the gap and no block in another stack's box, no two
-// nodes within two gaps swapping sides, the blocks of each stack moving by
-// one distance, and every block back where it was once every stack is
-// expanded again, in whatever order they collapse and expand.
+// no new pair within the gap and no block in the padding around a block of
+// another stack, no two nodes within two gaps swapping sides, the blocks of
+// each stack moving by one distance, and every block back where it was once
+// every stack is expanded again, in whatever order they collapse and expand.
 
 import type { Board } from "@blockr/core";
 import { beforeAll, describe, expect, test } from "vitest";
-import { canvasOf, distance, gapOf, shownBox } from "../geometry/index.ts";
+import { canvasOf, gapOf } from "../geometry/index.ts";
 import { layOut, loadDagre } from "../layout/index.ts";
 import type { Dagre } from "../layout/index.ts";
 import type { Layout } from "../state/index.ts";
@@ -89,19 +89,31 @@ describe.each(layouts)("collapsing and expanding stacks laid out $direction", (l
   });
 });
 
-test("moves another stack that lies in the box of a stack that expands out of it as one", () => {
-  const board = boardOf({
+// Two stacks, s and t, where s is collapsed and block c of t sits at the
+// height given, in the box of s once it expands.
+const crossing = (c: number) =>
+  boardOf({
     blocks: { a: "A", b: "B", c: "C", d: "D" },
     stacks: { s: ["a", "b"], t: ["c", "d"] },
     state: {
-      positions: { a: { x: 0, y: 0 }, b: { x: 300, y: 200 }, c: { x: 20, y: 100 }, d: { x: 150, y: 220 } },
+      positions: { a: { x: 0, y: 0 }, b: { x: 300, y: 200 }, c: { x: 20, y: c }, d: { x: 150, y: 220 } },
       stacks: { s: { collapsed: 1, moved: { positions: {}, stacks: {} } } },
     },
   });
+
+test("moves another stack whose block lies in the padding around a block of a stack that expands out of it, as one", () => {
+  // Block c lies 14 px into the padding below block a.
+  const board = crossing(60);
   const open = withState(board, folded(stateOf(board), expand(board, stateOf(board), "s")));
   const canvas = canvasOf(open, stateOf(open));
-  const [s, t] = [shownBox(canvas, "s"), shownBox(canvas, "t")];
-  if (s === undefined || t === undefined) throw new Error("no box");
-  expect(distance(s, t)).toBeGreaterThan(gapOf("normal") - 0.5);
+  expect(intruders(canvas, gapOf("normal") - 0.5)).toEqual([]);
   expect(reshaped(canvasOf(board, stateOf(board)), canvas)).toEqual([]);
+  expect([stateOf(open).positions.a, stateOf(open).positions.b]).toEqual([stateOf(board).positions.a, stateOf(board).positions.b]);
+});
+
+test("leaves another stack that lies in the box of a stack that expands, but in the padding around none of its blocks, where it is", () => {
+  // Block c sits 28 px below the padding around block a.
+  const board = crossing(100);
+  const open = withState(board, folded(stateOf(board), expand(board, stateOf(board), "s")));
+  expect(stateOf(open).positions).toEqual(stateOf(board).positions);
 });

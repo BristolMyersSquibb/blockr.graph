@@ -61,6 +61,45 @@ describe("the projection", () => {
     expect(moved?.x).toBeCloseTo(40);
   });
 
+  // The box of a block whose name is one letter, 32 by 52 px, with the
+  // padding of 20 px around it, in a stack that moves as one.
+  const padded = (x: number, y: number) => ({ x, y, w: 72, h: 92, holder: "s", asOne: true });
+  const pusher = (x: number, y: number) => ({ x, y, w: 32, h: 52, holder: null, fixed: "all" as const });
+
+  test("moves the blocks of a stack that moves as one by one distance", () => {
+    const bodies = [padded(0, 0), padded(0, 150), pusher(-60, 0)];
+    const [first, second] = project(bodies, bodies, gap);
+    // The fixed node pushes the first block to the gap beside it, 16 + 70 +
+    // 36 = 122 px from its middle, and the second block moves with it.
+    expect(first?.x).toBeCloseTo(-60 + 122);
+    expect(second?.x).toBeCloseTo(first?.x ?? 0);
+    expect([first?.y, second?.y]).toEqual([0, 150]);
+  });
+
+  test("keeps the gap from the padding around each block of a stack that moves as one, rather than from the stack's box", () => {
+    // The blocks of the stack form an L, and the fixed node lies in the
+    // corner of the L, in the stack's box, but a gap from each block's
+    // padding.
+    const bodies = [padded(0, 0), padded(0, 200), padded(200, 200), pusher(200, 0)];
+    const places = project(bodies, bodies, gap);
+    expect(places.slice(0, 3)).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 200 },
+      { x: 200, y: 200 },
+    ]);
+  });
+
+  test("keeps the gap from the box of a stack that moves as one, where a node lies between two of its blocks, too close to both", () => {
+    // The fixed node lies halfway between the stack's two blocks, which sit
+    // 244 px apart, so it would take 2 * (26 + 70 + 46) = 284 px to keep the
+    // gap from both. The stack moves aside instead, by 16 + 70 + 36 = 122 px.
+    const bodies = [padded(0, 0), padded(0, 244), pusher(0, 122)];
+    const [first, second] = project(bodies, bodies, gap);
+    expect(Math.abs(first?.x ?? 0)).toBeCloseTo(122);
+    expect(second?.x).toBeCloseTo(first?.x ?? 0);
+    expect([first?.y, second?.y]).toEqual([0, 244]);
+  });
+
   test("keeps two nodes in their order along an axis along which they sat apart", () => {
     const places = project(
       [

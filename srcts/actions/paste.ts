@@ -10,8 +10,8 @@
 //    links, and then blockr.graph-change_position with the positions that the
 //    read board gives them in the DAG's state, moved together so that their
 //    middle lands at the point where the user pastes, or at the free spot
-//    nearest it, so that nothing pasted lands on a node or in a stack's box
-//    that the board shows (../placement/free.ts).
+//    nearest it, so that nothing pasted lands on a node or in the shape of a
+//    stack that the board shows (../placement/free.ts).
 //
 // The class's afterStep places what the batch adds from there, as it places
 // whatever a step adds, so that one undo takes the paste back. A pasted block

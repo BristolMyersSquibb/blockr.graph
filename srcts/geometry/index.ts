@@ -13,6 +13,7 @@ export {
   merged,
   NO_CHANGES,
   nodeChanges,
+  paddedBoxes,
   shownBox,
   stackBoxAt,
   stackOf,

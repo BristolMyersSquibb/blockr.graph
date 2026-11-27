@@ -26,11 +26,14 @@
 //   they crowd it, and the side spreads out while the pointer is over one of
 //   them, so that each one is easy to hit (./graph.tsx).
 // - A stack draws in the colour that core keeps on it, or in the colour of
-//   borders where it has none, a default of the DAG's own. Its name sits above
-//   its box, or inside the small box of a collapsed stack, with the number of
-//   its blocks. A collapsed stack, and one with its box around its blocks,
-//   has a button that collapses or expands it, as a double click on its box
-//   does (./canvas.tsx).
+//   borders where it has none, a default of the DAG's own. An expanded stack
+//   draws its shape around its blocks (../shape), with its name above the
+//   topmost of them, and only the shape and the name take the pointer, so
+//   that a press beside the shape lands on what lies under it. A collapsed
+//   stack holds its name inside its small box, with the number of its blocks.
+//   A collapsed stack, and an expanded one, has a button that collapses or
+//   expands it, beside the name of an expanded stack, as a double click on
+//   the stack does (./canvas.tsx).
 
 import type { BlockId, RegistryEntry, Target } from "@blockr/core";
 import { useNotified, useStatus } from "@blockr/core/react";
@@ -184,12 +187,17 @@ function DrawnStack({ data, selected }: NodeProps<StackNode>): ReactElement {
       className="blockr-graph-stack"
       data-shows={data.shows}
       data-selected={selected ? "" : undefined}
-      style={{ "--blockr-graph-stack-color": color } as CSSProperties}
+      style={{ "--blockr-graph-stack-color": color, "--blockr-graph-stack-name-at": `${String(data.nameAt)}px` } as CSSProperties}
     >
       {data.shows === "expanded" ? (
         <>
-          <span className="blockr-graph-stack-name">{data.name}</span>
-          {collapse}
+          <svg className="blockr-graph-stack-shape" aria-hidden="true">
+            <path d={data.shape} />
+          </svg>
+          <span className="blockr-graph-stack-head">
+            <span className="blockr-graph-stack-name">{data.name}</span>
+            {collapse}
+          </span>
         </>
       ) : (
         <>

@@ -4,7 +4,7 @@
 // after. One of them, that the blocks of each stack move by one distance,
 // gave way in the spike, and holds again since each stack moves as one.
 
-import { canvasNodes, distance, expandedBox, overlaps } from "../geometry/index.ts";
+import { canvasNodes, distance, overlaps, paddedBoxes } from "../geometry/index.ts";
 import type { Canvas, CanvasNode } from "../geometry/index.ts";
 import type { Point } from "../state/index.ts";
 
@@ -51,19 +51,21 @@ export function swapped(before: Canvas, after: Canvas, gap: number): [string, st
   return pairs;
 }
 
-// The nodes that lie in the box of an expanded stack that they are not in,
-// or closer to it than the gap, each as its key and the stack's id.
+// The nodes that lie in the padding around a block of an expanded stack that
+// they are not in, which the stack's shape holds, or closer to it than the
+// gap, each as its key and the stack's id.
 export function intruders(canvas: Canvas, gap = 0): [string, string][] {
   const nodes = canvasNodes(canvas);
   return Object.keys(canvas.board.stacks).flatMap((stack) => {
-    const box = canvas.collapsed.has(stack) ? undefined : expandedBox(canvas, stack);
-    if (box === undefined) return [];
-    return nodes.filter((node) => node.stack !== stack && overlaps(node.box, box, gap)).map((node): [string, string] => [key(node), stack]);
+    const boxes = canvas.collapsed.has(stack) ? [] : paddedBoxes(canvas, stack);
+    return nodes
+      .filter((node) => node.stack !== stack && boxes.some((box) => overlaps(node.box, box, gap)))
+      .map((node): [string, string] => [key(node), stack]);
   });
 }
 
 // The stacks whose blocks do not all move by one distance from the canvas
-// before to the canvas after, so that their boxes change shape.
+// before to the canvas after, so that their shapes change.
 export function reshaped(before: Canvas, after: Canvas): string[] {
   return Object.entries(after.board.stacks).flatMap(([id, stack]) => {
     const moves = stack.blocks.flatMap((block) => {

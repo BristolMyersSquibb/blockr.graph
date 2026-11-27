@@ -153,11 +153,18 @@ mark_js <- function(block) {
   )
 }
 
-# The JS that finds the box of a stack's node.
-stack_js <- function(stack) {
-  paste0(
-    "document.querySelector(\".react-flow__node[data-id='s:", stack, "']\")"
+# A point on the page in the shape of the stack that holds a block: in the
+# padding beside the block's node, 10 px of the canvas to the right of the
+# node, level with the middle of the block's mark.
+shape_point <- function(app, block) {
+  node <- box_of(
+    app,
+    paste0(
+      "document.querySelector(\".react-flow__node[data-id='b:", block, "']\")"
+    )
   )
+  mark <- center_of(app, mark_js(block))
+  c(x = node[["x"]] + node[["width"]] + 10 * app_zoom(app), y = mark[["y"]])
 }
 
 # The JS that finds a handle of a block's node, by the handle's id.
