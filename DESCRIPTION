@@ -29,8 +29,8 @@ Suggests:
     rmarkdown,
     quarto
 Remotes:
-    BristolMyersSquibb/blockr.core@866-blockr-ui,
-    BristolMyersSquibb/blockr.dock@673-blockr-ui
+    BristolMyersSquibb/blockr.core@js-state,
+    BristolMyersSquibb/blockr.dock@js-state
 Config/testthat/edition: 3
 VignetteBuilder: quarto
 URL: https://bristolmyerssquibb.github.io/blockr.graph/
