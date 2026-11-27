@@ -820,7 +820,9 @@ describe("the panel of advanced actions", () => {
     const { el, core, stub } = await mounted();
     room();
     await rightClick(nodeOf(el, "b:c"));
-    act(() => {
+    // The panel has core mount the form only once React has drawn the panel.
+    // So the pick runs in step(), which lets the mount run inside act() too.
+    await step(() => {
       void stub.menu()?.pick("Edit inputs");
     });
     await vi.waitFor(() => {
@@ -850,13 +852,13 @@ describe("the panel of advanced actions", () => {
       expect(panel(el)).not.toBeNull();
     });
     await pointerPress(button(el, "Pin"));
-    act(() => {
+    await step(() => {
       core.selection.set([{ link: "bc" }]);
     });
     expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"bc"}');
     // A selection of several, or of an object that the board action is not
     // on, changes nothing.
-    act(() => {
+    await step(() => {
       core.selection.set([{ stack: "s1" }]);
     });
     expect(panel(el)?.querySelector("p")?.textContent).toBe('{"link":"bc"}');
