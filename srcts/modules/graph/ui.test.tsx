@@ -347,6 +347,16 @@ describe("search and the outline", () => {
     });
   }
 
+  // Waits until the pick has moved the view and selected the block, inside
+  // act(), since the DAG draws the selection once the view has moved.
+  async function untilSelected(core: CoreApi, block: { block: string }): Promise<void> {
+    await act(() =>
+      vi.waitFor(() => {
+        expect(core.selection.get()).toEqual([block]);
+      }),
+    );
+  }
+
   test("lists each stack with its blocks, and then the blocks in no stack, as the toolbar's button opens it", async () => {
     const { el } = await mounted();
     expect(el.querySelector(".blockr-graph-search")).toBeNull();
@@ -370,9 +380,7 @@ describe("search and the outline", () => {
     await pointerPress(button(el, "Search blocks"));
     await search(el, "merge");
     await pointerPress(rowOf(searchPanel(el), "Merge"));
-    await vi.waitFor(() => {
-      expect(core.selection.get()).toEqual([{ block: "c" }]);
-    });
+    await untilSelected(core, { block: "c" });
     expect(show).toHaveBeenCalledWith({ block: "c" });
     expect(el.querySelector(".blockr-graph-search")).toBeNull();
   });
@@ -385,9 +393,7 @@ describe("search and the outline", () => {
     expect(rowTexts(searchPanel(el))).toEqual(["Input (2)", "Merge", "Wide sepals", "Bind", "Scatter"]);
     await search(el, "head");
     await pointerPress(rowOf(searchPanel(el), "Head"));
-    await vi.waitFor(() => {
-      expect(core.selection.get()).toEqual([{ block: "b" }]);
-    });
+    await untilSelected(core, { block: "b" });
     expect((core.store.board().plugins[GRAPH] as GraphState).stacks.s1).toBeUndefined();
     expect(nodeIds(el)).toContain("b:b");
   });
