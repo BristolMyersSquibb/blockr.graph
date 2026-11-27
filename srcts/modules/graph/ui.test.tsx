@@ -822,12 +822,24 @@ describe("the panel of advanced actions", () => {
     expect(panel(el)).toBeNull();
   });
 
+  test("mounts an advanced action once React has drawn the panel, since core's forms draw with flushSync(), so that React logs no error", async () => {
+    const { el, stub } = await mounted();
+    room();
+    const error = vi.spyOn(console, "error");
+    await rightClick(nodeOf(el, "b:c"));
+    await step(() => {
+      void stub.menu()?.pick("Edit inputs");
+    });
+    await vi.waitFor(() => {
+      expect(panel(el)?.textContent).toContain('The inputs of the block "Merge".');
+    });
+    expect(error).not.toHaveBeenCalledWith(expect.stringMatching(/^flushSync was called/));
+  });
+
   test("once pinned, mounts an advanced action drawn in React afresh on the block that the user selects", async () => {
     const { el, core, stub } = await mounted();
     room();
     await rightClick(nodeOf(el, "b:c"));
-    // The panel has core mount the form only once React has drawn the panel.
-    // So the pick runs in step(), which lets the mount run inside act() too.
     await step(() => {
       void stub.menu()?.pick("Edit inputs");
     });

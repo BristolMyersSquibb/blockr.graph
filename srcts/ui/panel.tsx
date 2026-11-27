@@ -282,20 +282,23 @@ function PanelView({
 
 // The element in which core mounts the advanced action on the target, a new
 // one for each mount, as core's dialog mounts one.
-// The panel has core mount the action once React has finished the work in
-// which it committed the element, and not at all where the element has gone
-// by then.
-// Core renders the action within mount(), and a form of core's draws with
-// flushSync() through drawForm().
+// The panel calls core's mount() once React has finished the work in which it
+// committed the element.
+// Where the element has gone by then, the panel does not call mount().
+// Core's forms draw with flushSync().
 // Within React's work, its effects included, flushSync() flushes nothing.
-// React would then log an error, and draw the form only once drawForm() had
-// returned (https://github.com/BristolMyersSquibb/blockr.core/issues/900).
-// Core unmounts the action once React has finished the work in which the
-// element went. A module written in React then unmounts its own root at once,
-// before core empties the element. Within that work, React would put the
-// unmount off until core had emptied the element, and then fail to remove what
-// it drew. A new element for each mount keeps such a late unmount from
-// emptying the next mount.
+// React would then log an error, and draw the form only after mount() had
+// returned.
+// Core unmounts the advanced action once React has finished the work in which
+// the element went.
+// A module written in React then unmounts its own root at once, before core
+// empties the element.
+// Within that work, React would put the unmount off until core had emptied the
+// element, and then fail to remove what it drew.
+// Core runs the cleanup of an async render() only once the render() resolves.
+// That may be after core has unmounted the advanced action.
+// A new element for each mount keeps such a late cleanup from emptying the
+// next mount.
 function PanelBody({ args, target }: { args: PlaceArgs; target: Target }): ReactElement {
   const body = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
