@@ -13,6 +13,7 @@
 import type { CoreApi, Json, JsonBoard } from "@blockr/core";
 import { HELLO, stubCore } from "@blockr/core/stubs";
 import type { StubCore } from "@blockr/core/stubs";
+import { expectedWarnings } from "@blockr/ui/stubs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { defaultState, GRAPH, isCollapse } from "../../state/index.ts";
 import type { Collapse, GraphState, Point } from "../../state/index.ts";
@@ -150,6 +151,9 @@ describe("the DAG plugin's class", () => {
 
 describe("starting on a board", () => {
   test("drops what the state holds that does not fit the board, with a warning and a line of the log", async () => {
+    // Core's stub prints the line of the log through console.warn, which the
+    // test takes off the console.
+    const warned = expectedWarnings(/The DAG dropped what its state held/);
     const stale = { ...defaultState, positions: { ...ROW, gone: { x: 0, y: 0 } }, stacks: { s9: { x: 0, y: 0 } } };
     const { core } = await start(boardWith({ [GRAPH]: { state: stale, version: 1 } }));
     expect(dag(core).positions.gone).toBeUndefined();
@@ -159,6 +163,7 @@ describe("starting on a board", () => {
     expect(warning?.message).toContain('the position of the block "gone"');
     expect(warning?.message).toContain('the entry of the stack "s9"');
     expect(stub?.logged).toContainEqual(expect.objectContaining({ level: "warn", package: "blockr.graph", message: warning?.message }));
+    expect(warned).toHaveLength(1);
     expect(core.store.canUndo()).toBe(false);
   });
 

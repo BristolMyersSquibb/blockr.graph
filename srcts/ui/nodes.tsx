@@ -134,6 +134,7 @@ function GraphHandle({ node, handle }: { node: string; handle: HandleSpec }): Re
         isConnectable={handle.connectable}
         className="blockr-graph-handle"
         style={style}
+        role="button"
         aria-label={handle.label}
         data-crowded={handle.crowded ? "" : undefined}
         onPointerEnter={() => {

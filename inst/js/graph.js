@@ -2570,6 +2570,7 @@ function GraphHandle({ node, handle }) {
       isConnectable: handle.connectable,
       className: "blockr-graph-handle",
       style,
+      role: "button",
       "aria-label": handle.label,
       "data-crowded": handle.crowded ? "" : void 0,
       onPointerEnter: () => {

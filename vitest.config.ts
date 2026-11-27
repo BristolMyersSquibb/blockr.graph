@@ -7,6 +7,9 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     include: ["srcts/**/*.test.{ts,tsx}"],
+    // A test fails where it prints an error or a warning that it does not set
+    // off on purpose, through blockr.ui's setup.
+    setupFiles: ["@blockr/ui/stubs/setup"],
     // The typescript job of blockr.ci uploads coverage/lcov.info to Codecov.
     // The lcov reporter writes that file, and an HTML report beside it in
     // coverage/lcov-report.

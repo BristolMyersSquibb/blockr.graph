@@ -5,6 +5,12 @@
 // React Aria's Focusable passes the trigger's handlers to the element, beside
 // the element's own, as a handle keeps React Flow's, which start a link as the
 // user presses on it.
+// Focusable also lets the element take the keyboard's focus, so that the
+// tooltip shows as the focus reaches the element.
+// React Aria warns where such an element has no role with which a screen
+// reader names the tooltip.
+// So the status dot has the role "img", and a handle the role "button", since
+// a press on a handle starts a link.
 // No tooltip shows for a touch, which has no hover.
 
 import { Focusable, Tooltip, TooltipTrigger } from "@blockr/ui";
