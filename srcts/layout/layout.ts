@@ -15,10 +15,11 @@
 // edges, so it is given the stacks, the blocks and the links in the order
 // that the board holds them, and the same board gives the same positions
 // wherever the DAG runs.
-// The DAG draws a stack's box around its blocks with STACK_PADDING, which
-// lies within the box that dagre gives the cluster and keeps one gap from
-// the nodes and the boxes beside it, so the spacing needs no tuning around
-// a padding that dagre does not know.
+// The DAG draws a stack's shape around its blocks with STACK_PADDING, within
+// the box around them with that padding, which lies within the box that
+// dagre gives the cluster and keeps one gap from the nodes and the boxes
+// beside it, so the spacing needs no tuning around a padding that dagre does
+// not know.
 
 import type { BlockId, StackId } from "@blockr/core";
 import type { EdgeLabel, GraphLabel, NodeLabel } from "@dagrejs/dagre";

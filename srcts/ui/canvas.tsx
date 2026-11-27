@@ -9,9 +9,12 @@
 //   component alone (./moves.ts).
 // - As a drag ends, the DAG runs blockr.graph-change_position once, with
 //   every block and every stack without blocks that moved, so that a drag is
-//   one step. A block that the user drops on the box of another stack joins
-//   that stack through blockr.core-change_stack, in the same step, but on a
-//   locked board.
+//   one step. A block that the user drops on the shape of another stack, or
+//   on the box of a collapsed stack or of one that holds no block, joins that
+//   stack through blockr.core-change_stack, in the same step, but on a
+//   locked board. While the drag lasts, the shapes of stacks do not keep
+//   clear of what it moves, so that the shape that a block is dropped on
+//   stays as the user sees it (../shape).
 // - A run of presses of the arrow keys becomes one step once the user pauses,
 //   or once the focus leaves the block.
 // - A drag from a result to an input, or from an input to a result, draws a
@@ -25,7 +28,7 @@
 //   the link came from, through their roles, append_block_role and
 //   prepend_block_role, so that a board action that the app picks for either
 //   plays it here too. The new block starts at the drop (./actions.ts).
-// - A double click on a stack's box collapses or expands the stack.
+// - A double click on a stack's shape or box collapses or expands the stack.
 // - A right click on a node, a link, a stack or the canvas opens that
 //   object's menu of board actions, at the pointer, or the selection's menu
 //   where the object is one of several that the user selected, and so does a
@@ -127,13 +130,20 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
     movesRef.current = next;
     setMovesState(next);
   }, []);
+  // What the drag that goes on moves, until its step has run.
+  const [dragged, setDraggedState] = useState<Changes>(NO_MOVES);
+  const draggedRef = useRef<Changes>(NO_MOVES);
+  const setDragged = useCallback((next: Changes) => {
+    draggedRef.current = next;
+    setDraggedState(next);
+  }, []);
 
   const base = useMemo(() => canvasOf(board, state), [board, state]);
   const canvas = useMemo(() => changed(base, moves), [base, moves]);
   const selected = useMemo(() => selectedIds(selection), [selection]);
   const { nodes, edges } = useMemo(
-    () => elementsOf({ canvas, registry, layout, selected, hovered, locked, spread }),
-    [canvas, registry, layout, selected, hovered, locked, spread],
+    () => elementsOf({ canvas, registry, layout, selected, hovered, locked, spread, dragging: dragged }),
+    [canvas, registry, layout, selected, hovered, locked, spread, dragged],
   );
 
   // The nodes and the edges drawn last, which the selection reads as it
@@ -162,9 +172,10 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
         // Core has told the user why the store refused the step.
       } finally {
         setMoves(NO_MOVES);
+        setDragged(NO_MOVES);
       }
     },
-    [core, setMoves],
+    [core, setMoves, setDragged],
   );
 
   // Runs the moves of the arrow keys that the DAG has not run yet, unless a
@@ -219,7 +230,7 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
     drag.current = null;
     if (ended === null) return;
     const now = movesRef.current;
-    const joined = locked ? new Map<BlockId, string>() : joins(ended.canvas, now, ended.from.keys());
+    const joined = locked ? new Map<BlockId, string>() : joins(ended.canvas, draggedRef.current, ended.from.keys());
     void runMoves(movesBatch(current(), now, joined));
   }, [current, locked, runMoves]);
 
@@ -269,7 +280,9 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
         const from = lead === undefined ? undefined : dragging.from.get(lead);
         const to = lead === undefined ? undefined : moved.get(lead);
         if (from !== undefined && to !== undefined) {
-          setMoves(merged(dragging.pending, dragMoves(dragging.canvas, dragging.from.keys(), from, to, layout)));
+          const byDrag = dragMoves(dragging.canvas, dragging.from.keys(), from, to, layout);
+          setMoves(merged(dragging.pending, byDrag));
+          setDragged(byDrag);
         }
       } else if (moved.size > 0) {
         const now = movesRef.current;
@@ -282,7 +295,7 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
         scheduleSelects();
       }
     },
-    [centre, current, layout, runKeys, scheduleSelects, setMoves],
+    [centre, current, layout, runKeys, scheduleSelects, setMoves, setDragged],
   );
 
   const onEdgesChange = useCallback(

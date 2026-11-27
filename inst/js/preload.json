@@ -9,6 +9,7 @@
     "@blockr/core/react",
     "react",
     "./xyflow-82a19db7.js",
+    "./bubblesets-0382f1ff.js",
     "react/jsx-runtime",
     "@blockr/ui"
   ],

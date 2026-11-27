@@ -4,24 +4,42 @@
 //
 // - Around a stack that collapses, each node's target closes up on it.
 // - Around a stack that expands, each node's target is where it sits, and
-//   the stack's box stays where it is, so that what lies in it moves out.
+//   the stack stays where it is, so that what lies in the padding around one
+//   of its blocks moves out.
 // - For what Repulsion places, each node's target is where it sits, and what
 //   the step adds stays where it starts, so that what lies within the gap of
 //   it moves off it.
-// - For the stacks whose boxes a step grew or formed, each node's target is
+// - For the stacks whose shapes a step grew or formed, each node's target is
 //   where it sits, and each of those stacks stays where it is, so that what
-//   lies in its box or within the gap of it moves off it.
+//   lies in the padding around one of its blocks or within the gap of it
+//   moves off it.
 //
 // Each gives the changes of the nodes that it moves: the positions of
-// blocks, and of stacks that hold no block. Each stack moves as one node,
-// of its collapsed size or of its expanded box, whose blocks move with it by
-// one distance, so that a stack moves aside as a block does.
+// blocks, and of stacks that hold no block. Each stack moves as one, so that
+// a stack moves aside as a block does. A collapsed stack, and a stack that
+// holds no block, is one node of its box, whose blocks move with it by one
+// distance. An expanded stack is a node for each of its blocks, the block's
+// box with the padding, which its shape holds (../shape), and those nodes
+// move by one distance (./project.ts). So the nodes around an expanded stack
+// keep the gap from the padding around its blocks, rather than from its box.
 // The blocks of an expanded stack that holds a block that the step adds
 // move one by one instead, as blocks in no stack do, so that they make room
 // for it.
 
 import type { BlockId, StackId } from "@blockr/core";
-import { canvasNodes, expandedBox, NO_CHANGES, nodeChanges, overlaps, shifted, shownBox, stackBoxAt } from "../geometry/index.ts";
+import {
+  canvasNodes,
+  expandedBox,
+  NO_CHANGES,
+  nodeChanges,
+  overlaps,
+  padded,
+  paddedBoxes,
+  shifted,
+  shownBox,
+  STACK_PADDING,
+  stackBoxAt,
+} from "../geometry/index.ts";
 import type { Box, Canvas, CanvasNode, Changes } from "../geometry/index.ts";
 import type { Point } from "../state/index.ts";
 import { project } from "./project.ts";
@@ -62,14 +80,15 @@ export function closeUp(canvas: Canvas, stack: StackId, gap: number): Changes {
   return changesOf(canvas, nodes, project(bodies, [...targets, small], gap));
 }
 
-// Expanding the stack, whose blocks sit where they were in it: its box stays
-// where it is, and whatever lies in it moves out, taking along the nodes in
-// its way.
+// Expanding the stack, whose blocks sit where they were in it: the stack
+// stays where it is, and whatever lies in the padding around one of its
+// blocks moves out, taking along the nodes in its way.
 export function clearBox(canvas: Canvas, stack: StackId, gap: number): Changes {
-  const full = expandedBox(canvas, stack);
-  if (full === undefined) return NO_CHANGES;
+  const blocks = paddedBoxes(canvas, stack);
+  if (blocks.length === 0) return NO_CHANGES;
   const nodes = roomNodes(canvas).filter((node) => node.stack !== stack);
-  const bodies = [...nodes.map((node) => bodyOf(node)), fixedBox(full, "inside")];
+  const fixed = blocks.map((box): Body => ({ ...box, holder: stack, asOne: true, fixed: "inside" }));
+  const bodies = [...nodes.map((node) => bodyOf(node)), ...fixed];
   return changesOf(canvas, nodes, project(bodies, bodies, gap));
 }
 
@@ -83,18 +102,20 @@ export interface Added {
 // stays where it starts, and so does each block that the same step moves, as
 // where the assistant moves a block in the edit that adds another beside it,
 // with the stack that holds it. The nodes within the gap of what the step
-// adds move off it, a stack as one node, so that a block that the step adds
-// in a stack's box moves the stack aside. Those around a block that the step
-// moves keep what they had, since it takes the block's place as given.
+// adds move off it, a stack as one, so that a block that the step adds in
+// the padding around a block of a stack moves the stack aside. Those around
+// a block that the step moves keep what they had, since it takes the block's
+// place as given.
 // An expanded stack that holds a block that the step adds gives its blocks as
 // nodes of their own, so that they make room for the block within the stack.
 export function makeRoom(canvas: Canvas, added: Added, moved: ReadonlySet<BlockId>, gap: number): Changes {
   const holds = (stack: StackId, of: ReadonlySet<BlockId>) => (canvas.board.stacks[stack]?.blocks ?? []).some((block) => of.has(block));
   const split = new Set(Object.keys(canvas.board.stacks).filter((stack) => !canvas.collapsed.has(stack) && holds(stack, added.blocks)));
-  const push = (node: CanvasNode): Push | undefined => {
-    if (node.kind === "stack") {
-      if (added.stacks.has(node.id) || holds(node.id, added.blocks)) return "all";
-      return holds(node.id, moved) ? "none" : undefined;
+  const push = (node: RoomNode): Push | undefined => {
+    const stack = asStack(node);
+    if (stack !== null) {
+      if (added.stacks.has(stack) || holds(stack, added.blocks)) return "all";
+      return holds(stack, moved) ? "none" : undefined;
     }
     if (added.blocks.has(node.id)) return "all";
     return moved.has(node.id) ? "none" : undefined;
@@ -102,15 +123,16 @@ export function makeRoom(canvas: Canvas, added: Added, moved: ReadonlySet<BlockI
   return pushing(canvas, roomNodes(canvas, split), push, gap);
 }
 
-// Making room for the stacks whose boxes a step grew or formed, once the DAG
-// has placed what the step adds: each of them stays where it is, as a stack
-// that expands does, and the nodes that lie in its box or within the gap of
-// it move off it, each stack as one node.
+// Making room for the stacks whose shapes a step grew or formed, once the
+// DAG has placed what the step adds: each of them stays where it is, as a
+// stack that expands does, and the nodes that lie in the padding around one
+// of its blocks or within the gap of it move off it, each stack as one.
 // The blocks and the stacks that `kept` names stay where they are, with the
 // stacks that hold them, and keep what they had, as what the step adds or
 // moves does under Repulsion.
-// It moves nothing where no node lies in the box or within the gap of one of
-// the stacks, by more than the least move that counts.
+// It moves nothing where no node lies in the padding around a block of one
+// of the stacks or within the gap of it, by more than the least move that
+// counts.
 export function clearStacks(
   canvas: Canvas,
   stacks: ReadonlySet<StackId>,
@@ -118,42 +140,62 @@ export function clearStacks(
   gap: number,
 ): Changes {
   const nodes = roomNodes(canvas);
-  const grown = nodes.filter((node) => node.kind === "stack" && stacks.has(node.id)).map((node) => node.box);
   const holds = (stack: StackId) => (canvas.board.stacks[stack]?.blocks ?? []).some((block) => kept.blocks.has(block));
-  const push = (node: CanvasNode): Push | undefined => {
-    if (node.kind === "block") return kept.blocks.has(node.id) ? "none" : undefined;
-    if (stacks.has(node.id)) return "all";
-    return kept.stacks.has(node.id) || holds(node.id) ? "none" : undefined;
+  const push = (node: RoomNode): Push | undefined => {
+    const stack = asStack(node);
+    if (stack === null) return kept.blocks.has(node.id) ? "none" : undefined;
+    if (stacks.has(stack)) return "all";
+    return kept.stacks.has(stack) || holds(stack) ? "none" : undefined;
   };
+  const grown = nodes.filter((node) => push(node) === "all").map((node) => node.box);
   const crowded = nodes.some((node) => push(node) === undefined && grown.some((box) => overlaps(node.box, box, gap - LEAST)));
   return crowded ? pushing(canvas, nodes, push, gap) : NO_CHANGES;
 }
 
 // The changes of the nodes that move as the fixed nodes push them, from
 // where each sits, each fixed node pushing as `push` gives.
-function pushing(canvas: Canvas, nodes: readonly CanvasNode[], push: (node: CanvasNode) => Push | undefined, gap: number): Changes {
+function pushing(canvas: Canvas, nodes: readonly RoomNode[], push: (node: RoomNode) => Push | undefined, gap: number): Changes {
   const bodies = nodes.map((node) => bodyOf(node, push(node)));
   return changesOf(canvas, nodes, project(bodies, bodies, gap), (i) => bodies[i]?.fixed !== undefined);
 }
 
-// The nodes that making room moves: each block in no stack, and each stack as
-// one node, of its expanded box, of its collapsed size, or with the size of
-// its box where it holds no block, each in the order that the board holds
-// it. An expanded stack that `split` names gives its blocks as nodes of their
-// own instead, as the DAG shows them.
-function roomNodes(canvas: Canvas, split: ReadonlySet<StackId> = new Set()): CanvasNode[] {
-  const apart = (stack: StackId) => split.has(stack) && !canvas.collapsed.has(stack);
-  const blocks = canvasNodes(canvas).filter((node) => node.kind === "block" && (node.stack === null || apart(node.stack)));
-  const stacks = Object.keys(canvas.board.stacks).flatMap((stack): CanvasNode[] => {
-    const box = apart(stack) ? undefined : shownBox(canvas, stack);
-    return box === undefined ? [] : [{ kind: "stack", id: stack, box, stack }];
+// A node that making room moves: a node that the DAG shows, or the box of a
+// block of an expanded stack that moves as one, with the padding, where
+// `asOne` holds.
+interface RoomNode extends CanvasNode {
+  readonly asOne: boolean;
+}
+
+// The stack that the node moves as one with: the stack of a stack's node, or
+// of the box of one of its blocks, or null for a block that moves on its own.
+function asStack(node: RoomNode): StackId | null {
+  if (node.kind === "stack") return node.id;
+  return node.asOne ? node.stack : null;
+}
+
+// The nodes that making room moves, each in the order that the board holds
+// it: each block in no stack, each block of an expanded stack as the box of
+// the block with the padding, all of which move as one, and each collapsed
+// stack and each stack that holds no block as one node of its box. An
+// expanded stack that `split` names gives its blocks as nodes of their own
+// instead, as the DAG shows them, which move one by one.
+function roomNodes(canvas: Canvas, split: ReadonlySet<StackId> = new Set()): RoomNode[] {
+  const blocks = canvasNodes(canvas).flatMap((node): RoomNode[] => {
+    if (node.kind !== "block") return [];
+    if (node.stack === null || split.has(node.stack)) return [{ ...node, asOne: false }];
+    return [{ ...node, box: padded(node.box, STACK_PADDING), asOne: true }];
+  });
+  const stacks = Object.keys(canvas.board.stacks).flatMap((stack): RoomNode[] => {
+    if (!canvas.collapsed.has(stack) && canvas.points[stack] === undefined) return [];
+    const box = shownBox(canvas, stack);
+    return box === undefined ? [] : [{ kind: "stack", id: stack, box, stack, asOne: false }];
   });
   return [...blocks, ...stacks];
 }
 
-function bodyOf(node: CanvasNode, fixed?: Push): Body {
+function bodyOf(node: RoomNode, fixed?: Push): Body {
   const holder = node.kind === "block" ? node.stack : null;
-  return { ...node.box, holder, ...(fixed === undefined ? {} : { fixed }) };
+  return { ...node.box, holder, ...(node.asOne ? { asOne: true } : {}), ...(fixed === undefined ? {} : { fixed }) };
 }
 
 function fixedBox(box: Box, push: Push): Body {
@@ -161,14 +203,19 @@ function fixedBox(box: Box, push: Push): Body {
 }
 
 // The changes of the nodes that the places move, in the order of the nodes,
-// but for those that `skip` names by their index.
-function changesOf(canvas: Canvas, nodes: readonly CanvasNode[], places: readonly Point[], skip?: (i: number) => boolean): Changes {
+// but for those that `skip` names by their index. The blocks of a stack that
+// moves as one all move as its first block moves, which they move with.
+function changesOf(canvas: Canvas, nodes: readonly RoomNode[], places: readonly Point[], skip?: (i: number) => boolean): Changes {
   const positions: Record<BlockId, Point> = {};
   const points: Record<StackId, Point> = {};
+  const moves = new Map<StackId, Point>();
   for (const [i, node] of nodes.entries()) {
     const place = places[i];
     if (place === undefined || skip?.(i) === true) continue;
-    const [dx, dy] = [place.x - node.box.x, place.y - node.box.y];
+    const stack = node.kind === "block" ? asStack(node) : null;
+    const first = stack === null ? undefined : moves.get(stack);
+    const [dx, dy] = first === undefined ? [place.x - node.box.x, place.y - node.box.y] : [first.x, first.y];
+    if (stack !== null && first === undefined) moves.set(stack, { x: dx, y: dy });
     if (Math.hypot(dx, dy) < LEAST) continue;
     const changes = nodeChanges(canvas, node, shifted(node.box, dx, dy));
     Object.assign(positions, changes.positions);

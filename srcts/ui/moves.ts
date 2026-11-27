@@ -19,6 +19,7 @@
 import type { BlockId, Board, CommandCall, Json, StackId } from "@blockr/core";
 import { boxOfBlock, merged, nodeChanges, shifted, shownBox, snapPoint, stackOf } from "../geometry/index.ts";
 import type { Box, Canvas, CanvasNode, Changes } from "../geometry/index.ts";
+import { stackShape, withinShape } from "../shape/index.ts";
 import type { Layout, Point } from "../state/index.ts";
 import { objectOf } from "./ids.ts";
 
@@ -91,15 +92,21 @@ export function keyMoves(canvas: Canvas, moved: ReadonlyMap<string, Point>, layo
 }
 
 // The stack that each block of the drag joins: where a block that the user
-// dragged, rather than its stack, ends inside the box of a stack that it is
-// not in, it joins that stack, the smallest such box where several hold it.
-// The boxes are those of the canvas as the drag started.
+// dragged, rather than its stack, ends inside the shape of an expanded stack
+// that it is not in, or inside the box of a collapsed stack or of a stack
+// that holds no block, it joins that stack, the one with the smallest box
+// where several hold it.
+// The shapes and the boxes are those of the canvas as the drag started, and
+// the shapes do not keep clear of what the moves of the drag move, as the
+// DAG draws them while the drag lasts (../shape).
 export function joins(start: Canvas, moves: Changes, nodes: Iterable<string>): Map<BlockId, StackId> {
   const held = stackOf(start.board);
-  const boxes: [StackId, Box][] = [];
+  const boxes: [StackId, Box, (point: Point) => boolean][] = [];
   for (const stack of Object.keys(start.board.stacks)) {
     const box = shownBox(start, stack);
-    if (box !== undefined) boxes.push([stack, box]);
+    if (box === undefined) continue;
+    const shape = stackShape(start, stack, moves);
+    boxes.push([stack, box, shape === undefined ? (point) => contains(box, point) : (point) => withinShape(shape, point)]);
   }
   const joined = new Map<BlockId, StackId>();
   for (const node of nodes) {
@@ -109,7 +116,7 @@ export function joins(start: Canvas, moves: Changes, nodes: Iterable<string>): M
     if (point === undefined) continue;
     const own = held.get(object.block);
     const holding = boxes
-      .filter(([stack, box]) => stack !== own && contains(box, point))
+      .filter(([stack, , holds]) => stack !== own && holds(point))
       .sort(([, a], [, b]) => a.w * a.h - b.w * b.h);
     const [first] = holding;
     if (first !== undefined) joined.set(object.block, first[0]);

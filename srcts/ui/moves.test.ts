@@ -76,6 +76,23 @@ describe("a drag", () => {
     expect([...joins(start, moves, ["b:c", "b:b"])]).toEqual([["c", "s2"]]);
   });
 
+  test("joins a block that the user drops inside the shape of an expanded stack, but not one dropped in its box beside the shape", () => {
+    // The blocks p, q and r of the stack s form an L, and block x lies to
+    // its right.
+    const board = boardOf({
+      blocks: { p: "P", q: "Q", r: "R", x: "X" },
+      stacks: { s: ["p", "q", "r"] },
+      state: { positions: { p: { x: 0, y: 0 }, q: { x: 0, y: 200 }, r: { x: 300, y: 200 }, x: { x: 600, y: 0 } } },
+    });
+    const start = canvasOf(board, board.plugins[GRAPH] as GraphState);
+    const dropped = (point: { x: number; y: number }) => [...joins(start, { positions: { x: point }, points: {} }, ["b:x"])];
+    // In the padding beside p, and in the strip that joins p and q.
+    expect(dropped({ x: 25, y: 10 })).toEqual([["x", "s"]]);
+    expect(dropped({ x: 0, y: 100 })).toEqual([["x", "s"]]);
+    // In the box of s, above r, where its shape covers nothing.
+    expect(dropped({ x: 300, y: 0 })).toEqual([]);
+  });
+
   test("joins the stack of the smallest box that holds the block, and nothing where a stack is dragged", () => {
     const start = canvas();
     const s3 = shownBox(start, "s3");

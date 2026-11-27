@@ -16,17 +16,21 @@
 //   those files would hold code from node_modules, so that it holds only the
 //   DAG's own code, unminified, and a diff of inst/js shows what an edit of
 //   srcts changed.
-//   It fails where a file of the DAG imports dagre, WebCola or React Flow
-//   other than through the files of VENDORED, below.
+//   It fails where a file of the DAG imports dagre, WebCola, bubblesets-js or
+//   React Flow other than through the files of VENDORED, below.
 // - The packages that the DAG bundles from other projects are those that
-//   package.json lists in `dependencies`: dagre, WebCola and React Flow. Each
-//   file of VENDORED names the part of them that one part of the DAG uses, and
-//   is bundled, minified, into a file of its own, named by the start of its
-//   name in VENDORED and a hash of its content, so that no browser runs an old
-//   copy from its cache:
+//   package.json lists in `dependencies`: dagre, WebCola, bubblesets-js and
+//   React Flow. Each file of VENDORED names the part of them that one part of
+//   the DAG uses, and is bundled, minified, into a file of its own, named by
+//   the start of its name in VENDORED and a hash of its content, so that no
+//   browser runs an old copy from its cache:
 //   - WebCola's solver of VPSC, through which the DAG makes room, from
 //     srcts/room/vendor.ts into vpsc-<hash>.js, which the DAG's module imports
 //     up front, since the class's afterStep makes room as a step ends.
+//   - Bubble Sets from bubblesets-js, which draw the shape of an expanded
+//     stack, from srcts/shape/vendor.ts into bubblesets-<hash>.js, which the
+//     DAG's module imports up front, since the DAG draws a stack's shape as
+//     it draws the board.
 //   - The layout library dagre, through which the DAG lays a board out, from
 //     srcts/layout/vendor.ts into dagre-<hash>.js, which the DAG loads only
 //     once it lays a board out, as core bundles the parts of OpenTelemetry's
@@ -97,6 +101,7 @@ interface Entry {
 // bundled into a script, and a stylesheet into a stylesheet.
 const VENDORED: readonly (readonly [string, string])[] = [
   ["vpsc", join("srcts", "room", "vendor.ts")],
+  ["bubblesets", join("srcts", "shape", "vendor.ts")],
   ["dagre", join("srcts", "layout", "vendor.ts")],
   ["xyflow", join("srcts", "flow", "vendor.ts")],
   ["xyflow", join("srcts", "flow", "vendor.css")],

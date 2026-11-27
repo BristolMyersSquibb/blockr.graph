@@ -38,13 +38,13 @@ const NAME_MAX = 160;
 // The height of a block's node with its name.
 export const BLOCK_HEIGHT = MARK + NAME_OFFSET + NAME_HEIGHT;
 
-// The room between a stack's box and its blocks: 20 px, dagre's default
-// edgesep.
+// The room that a stack's shape keeps around each of its blocks, and that
+// its box keeps around them all: 20 px, dagre's default edgesep.
 // Laying the board out, dagre bounds a cluster with border nodes, and puts
 // half of edgesep and half a gap between a border node and a node beside
 // it, and edgesep between two border nodes.
-// So a stack's box lies within its cluster, and keeps one gap from the
-// nodes and the boxes beside it, as two nodes do.
+// So a stack's box, and its shape within it, lies within its cluster, and
+// keeps one gap from the nodes and the boxes beside it, as two nodes do.
 export const STACK_PADDING = 20;
 
 // The box of a collapsed stack and of a stack that holds no block, which

@@ -11,10 +11,11 @@
 //    rather than a place from the strategy. The position takes the place of
 //    `collapsed` and `moved` in its entry, since a stack that holds no block
 //    shows as a collapsed stack does already.
-// 3. It makes room around each stack whose box the step grew or formed,
-//    whatever the placement, so that no stack's box holds a block that the
-//    stack does not hold, and no two stacks' boxes come within the gap of
-//    each other (clearStacks() in ../room).
+// 3. It makes room around each stack whose shape the step grew or formed,
+//    whatever the placement, so that no block that a stack does not hold
+//    lies in the padding around one of the stack's blocks, nor within the
+//    gap of it, and no two stacks come that close to each other
+//    (clearStacks() in ../room).
 // 4. It drops each block and stack that making room moves from what
 //    collapses moved, so that no expand puts it back.
 // 5. It drops the entry of each stack that holds a block and has a position.
@@ -32,7 +33,19 @@
 // back what they take back with its position.
 
 import type { Board, Patch, PluginClassId, StackId } from "@blockr/core";
-import { boxOfBlock, canvasOf, changed, expandedBox, gapOf, merged, NO_CHANGES, shownBox, snapChanges, snapPoint } from "../geometry/index.ts";
+import {
+  boxOfBlock,
+  canvasOf,
+  changed,
+  expandedBox,
+  gapOf,
+  merged,
+  NO_CHANGES,
+  paddedBoxes,
+  shownBox,
+  snapChanges,
+  snapPoint,
+} from "../geometry/index.ts";
 import type { Box, Canvas } from "../geometry/index.ts";
 import { changePatches, entryPatches, unmovedPatches } from "../patches/index.ts";
 import { placeAdded } from "../placement/index.ts";
@@ -75,7 +88,7 @@ export function afterStep(board: Board, before: Board, plugin: PluginClassId): P
     }
   }
 
-  // Making room around each stack whose box the step grew or formed, on the
+  // Making room around each stack whose shape the step grew or formed, on the
   // canvas that placing leaves, with the positions of the stacks that the
   // step leaves without blocks. What the step adds, the blocks that it moves
   // and the stacks without blocks that it moves stay where they are.
@@ -110,15 +123,17 @@ function movedStack(prior: GraphState | undefined, state: GraphState, stack: Sta
   return was !== undefined && now !== undefined && isPoint(was) && isPoint(now) && !samePoint(was, now);
 }
 
-// The stacks whose boxes the step grew or formed, from the canvas before the
+// The stacks whose shapes the step grew or formed, from the canvas before the
 // step and the one after it:
-// - The step formed the box of a stack that shows a box now and showed none
+// - The step formed the shape of a stack that shows now and showed nowhere
 //   before, or that held blocks before and holds none now, or the other way
 //   round.
-// - The step grew the box of a stack whose blocks it changed, other than by
-//   moving them all by one distance, where the box now reaches beyond where
-//   it was. It changes them by adding or removing blocks, renaming one, or
-//   moving some of them apart from the others.
+// - The step grew the shape of a stack whose blocks it changed, other than
+//   by moving them all by one distance, where the padding around one of its
+//   blocks now reaches beyond the padding around each of its blocks before
+//   the step, or for a collapsed stack, where its box now reaches beyond
+//   where it was. It changes them by adding or removing blocks, renaming one,
+//   or moving some of them apart from the others.
 // So the step grows no stack that moves as one, as where someone drags it or
 // the DAG makes room, and no stack that collapses or expands.
 function grownStacks(before: Canvas, after: Canvas): Set<StackId> {
@@ -128,9 +143,19 @@ function grownStacks(before: Canvas, after: Canvas): Set<StackId> {
     if (now === undefined) continue;
     const was = shownBox(before, id);
     const filled = (stack.blocks.length > 0) !== ((before.board.stacks[id]?.blocks.length ?? 0) > 0);
-    if (was === undefined || filled || (reshaped(before, after, id) && !within(now, was))) grown.add(id);
+    if (was === undefined || filled) grown.add(id);
+    else if (reshaped(before, after, id) && reaches(before, after, id, was, now)) grown.add(id);
   }
   return grown;
+}
+
+// Whether the stack now reaches beyond where it reached before the step: the
+// padding around one of its blocks beyond the padding around each of its
+// blocks before, or the box of a collapsed stack beyond its box before.
+function reaches(before: Canvas, after: Canvas, stack: StackId, was: Box, now: Box): boolean {
+  if (after.collapsed.has(stack) || before.collapsed.has(stack)) return !within(now, was);
+  const old = paddedBoxes(before, stack);
+  return paddedBoxes(after, stack).some((box) => !old.some((other) => within(box, other)));
 }
 
 // Whether the step changed the blocks of the stack other than by moving them

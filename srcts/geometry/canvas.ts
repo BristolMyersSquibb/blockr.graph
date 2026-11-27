@@ -5,7 +5,11 @@
 //
 // - A block's node is its mark with its name below it, centred at the
 //   block's position.
-// - A stack's box fits its blocks, with STACK_PADDING around them.
+// - A stack's box fits its blocks, with STACK_PADDING around them. The DAG
+//   draws an expanded stack as a shape within it, which holds each of the
+//   stack's blocks with STACK_PADDING around it (../shape). Placing and
+//   making room keep the nodes that the stack does not hold out of the boxes
+//   of its blocks with that padding, rather than out of its box.
 // - A collapsed stack shows as a box of its own size, centred where its
 //   expanded box is, and its blocks hide.
 // - A stack that holds no block shows as a box of the same size, centred at
@@ -85,6 +89,15 @@ export function expandedBox(canvas: Canvas, stack: StackId): Box | undefined {
   return box === undefined ? undefined : padded(box, STACK_PADDING);
 }
 
+// The boxes of the stack's blocks that have a position, each with
+// STACK_PADDING around it, which the stack's shape holds.
+export function paddedBoxes(canvas: Canvas, stack: StackId): Box[] {
+  return (canvas.board.stacks[stack]?.blocks ?? []).flatMap((block) => {
+    const box = boxOfBlock(canvas, block);
+    return box === undefined ? [] : [padded(box, STACK_PADDING)];
+  });
+}
+
 // The box of a stack as the DAG shows it: the box of a collapsed stack,
 // centred where its expanded box is, the expanded box of a stack with
 // blocks, or the box at the position of a stack that holds no block.
@@ -97,8 +110,7 @@ export function shownBox(canvas: Canvas, stack: StackId): Box | undefined {
 }
 
 // A node that the DAG shows: a block in no stack or in an expanded stack, or
-// a stack that shows as one box, collapsed or holding no block. Making room
-// takes an expanded stack as one node too, of its expanded box.
+// a stack that shows as one box, collapsed or holding no block.
 export interface CanvasNode {
   readonly kind: "block" | "stack";
   // The id of the block or of the stack.

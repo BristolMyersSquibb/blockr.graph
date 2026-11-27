@@ -14,8 +14,9 @@
 // - Dropped on the canvas, away from every node and stack, it triggers Append
 //   block from a block's result, or Prepend block on the input that it came
 //   from, or on a variadic block's next place, through their roles. Dropped
-//   on a node or on a stack's box, away from its handles, it adds nothing, as
-//   today's does.
+//   on a node, on the shape of an expanded stack or on the box of another
+//   stack, away from its handles, it adds nothing, as today's does. A drop
+//   beside the shape of an expanded stack, in its box, lands on the canvas.
 
 import type { BlockId, Json, Target } from "@blockr/core";
 import type { Point } from "../state/index.ts";
