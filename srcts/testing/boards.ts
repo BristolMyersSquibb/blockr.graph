@@ -2,14 +2,18 @@
 // boards of the spike that checked making room, with stacks grown from given
 // points (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3,
 // notes).
+// They are built without a stub of core, so they make their ids with id() of
+// @blockr/core/stubs, which gives the objects that the stubs give.
 
 import type { BlockId, Board, Link, LinkId, Stack, StackId } from "@blockr/core";
+import { id } from "@blockr/core/stubs";
 import type { Folded } from "../collapse/index.ts";
 import { defaultState, GRAPH } from "../state/index.ts";
 import type { GraphState, Point, StackEntry } from "../state/index.ts";
 
 // A board by its blocks' names, its links as pairs of block ids, its stacks
 // as lists of block ids, and the DAG's state, the default where left out.
+// Each block is of core's class head_block.
 export interface BoardSpec {
   readonly blocks: Readonly<Record<BlockId, string>>;
   readonly links?: readonly (readonly [BlockId, BlockId])[];
@@ -19,25 +23,26 @@ export interface BoardSpec {
 
 export function boardOf(spec: BoardSpec): Board {
   const blocks = Object.fromEntries(
-    Object.entries(spec.blocks).map(([id, name]) => [id, { registry_id: "blockr.core-head_block", state: {}, name, locked: null }]),
+    Object.entries(spec.blocks).map(([block, name]) => [block, { registry_id: id("blockr.core", "head_block"), state: {}, name, locked: null }]),
   );
   const links: Record<LinkId, Link> = {};
   for (const [i, [from, to]] of (spec.links ?? []).entries()) links[`l${String(i + 1)}`] = { from, to, input: "data" };
   const stacks = Object.fromEntries(
     Object.entries(spec.stacks ?? {}).map(([id, held]) => [id, { name: id, blocks: [...held], color: null }]),
   );
-  return { id: "test", name: "Test", blocks, links, stacks, options: {}, plugins: { [GRAPH]: { ...defaultState, ...spec.state } } };
+  const plugins = { [GRAPH.package]: { [GRAPH.id]: { ...defaultState, ...spec.state } } };
+  return { id: "test", name: "Test", blocks, links, stacks, options: {}, plugins };
 }
 
 // The board with the DAG's state changed as given.
 export function withState(board: Board, state: Partial<GraphState>): Board {
-  const held = board.plugins[GRAPH] as GraphState;
-  return { ...board, plugins: { ...board.plugins, [GRAPH]: { ...held, ...state } } };
+  const held = stateOf(board);
+  return { ...board, plugins: { ...board.plugins, [GRAPH.package]: { ...board.plugins[GRAPH.package], [GRAPH.id]: { ...held, ...state } } } };
 }
 
-// The DAG's state on a board that boardOf() made.
+// The DAG's state on a board of the tests, which holds it.
 export function stateOf(board: Board): GraphState {
-  return board.plugins[GRAPH] as GraphState;
+  return board.plugins[GRAPH.package]?.[GRAPH.id] as GraphState;
 }
 
 // The DAG's state after a collapse or an expand.

@@ -11,8 +11,8 @@
 // - How each canvas that is mounted fits its view to the board. Layout's
 //   quick action fits the view once it has laid the board out again, as the
 //   canvas fits the view as it first mounts on a board. The canvas cannot
-//   tell a step of blockr.graph-relayout from another step by itself, since a
-//   step does not say which command made it.
+//   tell a step of relayout of blockr.graph from another step by itself,
+//   since a step does not say which command made it.
 
 import type { Point } from "../state/index.ts";
 

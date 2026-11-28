@@ -1,12 +1,13 @@
 // What dragging nodes and pressing the arrow keys move, and the batch that
 // ends them (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#gestures).
 
+import { id } from "@blockr/core/stubs";
 import { describe, expect, test } from "vitest";
 import { canvasOf, expandedBox, shownBox } from "../geometry/index.ts";
 import type { Canvas } from "../geometry/index.ts";
-import { defaultState, GRAPH } from "../state/index.ts";
-import type { GraphState, Layout } from "../state/index.ts";
-import { boardOf } from "../testing/index.ts";
+import { defaultState } from "../state/index.ts";
+import type { Layout } from "../state/index.ts";
+import { boardOf, stateOf } from "../testing/index.ts";
 import { centreOf, dragMoves, joins, keyMoves, movedBy, movesBatch, NO_MOVES } from "./moves.ts";
 
 const LAYOUT = defaultState.layout;
@@ -28,7 +29,7 @@ function canvas(): Canvas {
     },
   });
   const empty = { ...board, stacks: { ...board.stacks, s2: { name: "s2", blocks: [], color: null } } };
-  return canvasOf(empty, empty.plugins[GRAPH] as GraphState);
+  return canvasOf(empty, stateOf(empty));
 }
 
 describe("moving nodes", () => {
@@ -88,14 +89,17 @@ describe("a drag", () => {
   test("ends with one batch: the stacks that blocks join, then every block and stack without blocks that moved", () => {
     const start = canvas();
     const moves = { positions: { c: { x: 600, y: 310 }, d: { x: 600, y: 0 } }, points: { s2: { x: 610, y: 300 } } };
-    expect(movesBatch(start, moves, new Map([["c", "s3"]]))).toEqual([
-      { id: "blockr.core-change_stack", args: { id: "s3", blocks: ["e", "c"] } },
-      { id: "blockr.graph-change_position", args: { positions: { c: { x: 600, y: 310 } }, stacks: { s2: { x: 610, y: 300 } } } },
+    expect(movesBatch(start, moves, { id }, new Map([["c", "s3"]]))).toEqual([
+      { id: { package: "blockr.core", id: "change_stack" }, args: { id: "s3", blocks: ["e", "c"] } },
+      {
+        id: { package: "blockr.graph", id: "change_position" },
+        args: { positions: { c: { x: 600, y: 310 } }, stacks: { s2: { x: 610, y: 300 } } },
+      },
     ]);
   });
 
   test("that moves nothing runs nothing", () => {
-    expect(movesBatch(canvas(), { positions: { c: { x: 300, y: 150 } }, points: {} })).toEqual([]);
+    expect(movesBatch(canvas(), { positions: { c: { x: 300, y: 150 } }, points: {} }, { id })).toEqual([]);
   });
 });
 

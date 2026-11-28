@@ -13,8 +13,8 @@
 //   the view has reached it, so that picking a block shows it, as a click on
 //   its node does. Picking a
 //   block of a collapsed stack expands the stack first, through
-//   blockr.graph-collapse_stack, which moves the blocks around the stack and
-//   takes an undo step, as any expand does.
+//   collapse_stack of blockr.graph, which moves the blocks around the stack
+//   and takes an undo step, as any expand does.
 // - Escape, a click outside the panel or a pick closes it.
 
 import type { BoardObject } from "@blockr/core";
@@ -70,7 +70,7 @@ export function SearchPanel({ onClose }: { onClose: () => void }): ReactElement 
     const stack = "block" in object ? outline.stacks.find(({ blocks }) => blocks.some(({ block }) => block === object.block)) : undefined;
     const state = graphState(before, plugin) ?? defaultState;
     if (stack !== undefined && canvasOf(before, state).collapsed.has(stack.stack)) {
-      await core.commands.run("blockr.graph-collapse_stack", { stack: stack.stack, collapsed: false }).catch(() => undefined);
+      await core.commands.run(core.id("blockr.graph", "collapse_stack"), { stack: stack.stack, collapsed: false }).catch(() => undefined);
     }
     const now = core.store.board();
     const centre = centreOf(canvasOf(now, graphState(now, plugin) ?? defaultState), key);

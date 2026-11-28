@@ -17,13 +17,13 @@ afterEach(() => {
 
 describe("a key in the DAG", () => {
   test("Backspace triggers Remove on the selection, through its role", () => {
-    expect(keyAction(pressed("Backspace"), selection, false)).toEqual({ id: "remove_selected_role", target: { selection } });
+    expect(keyAction(pressed("Backspace"), selection, false)).toEqual({ action: { role: "remove_selected_role" }, target: { selection } });
     expect(keyAction(pressed("Backspace"), [], false)).toBeUndefined();
   });
 
   test("Cmd or Ctrl with C and X triggers Copy and Cut", () => {
-    expect(keyAction(pressed("c", { metaKey: true }), selection, false)).toEqual({ id: COPY, target: { selection } });
-    expect(keyAction(pressed("x", { ctrlKey: true }), selection, false)).toEqual({ id: CUT, target: { selection } });
+    expect(keyAction(pressed("c", { metaKey: true }), selection, false)).toEqual({ action: { id: COPY }, target: { selection } });
+    expect(keyAction(pressed("x", { ctrlKey: true }), selection, false)).toEqual({ action: { id: CUT }, target: { selection } });
   });
 
   test("Cmd or Ctrl with V triggers nothing, so that the browser runs its own paste", () => {

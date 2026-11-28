@@ -234,7 +234,7 @@ export function elementsOf(drawing: Drawing): Elements {
     const point = canvas.positions[id];
     const stack = held.get(id);
     if (point === undefined || (stack !== undefined && canvas.collapsed.has(stack))) continue;
-    const entry = registry[block.registry_id];
+    const entry = registry.get(block.registry_id);
     const width = blockWidth(block.name);
     const spreading = spread?.node === blockNode(id) ? spread.side : null;
     const handles = blockHandles({ board, id, entry, width, layout, links, byId, locked, spreading });

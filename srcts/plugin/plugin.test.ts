@@ -2,6 +2,7 @@
 // boards built for each case.
 
 import type { Board, Delta } from "@blockr/core";
+import { id } from "@blockr/core/stubs";
 import { describe, expect, test } from "vitest";
 import { collapse, expand } from "../collapse/index.ts";
 import { canvasOf, distance, gapOf, shownBox } from "../geometry/index.ts";
@@ -13,7 +14,7 @@ import type { BoardSpec } from "../testing/index.ts";
 import { afterStep, starting, update } from "./index.ts";
 
 const at = (x: number, y: number): Point => ({ x, y });
-const path = (...segments: string[]) => `/plugins/${GRAPH}/${segments.join("/")}`;
+const path = (...segments: string[]) => `/plugins/${GRAPH.package}/${GRAPH.id}/${segments.join("/")}`;
 const none = { positions: {}, stacks: {} };
 
 // The board with the patches applied to the DAG's state, as the store would
@@ -21,7 +22,7 @@ const none = { positions: {}, stacks: {} };
 function patched(board: Board, patches: readonly { op: string; path: string; value?: unknown }[]): Board {
   const state: Record<string, unknown> = structuredClone(stateOf(board));
   for (const patch of patches) {
-    const segments = patch.path.split("/").slice(3);
+    const segments = patch.path.split("/").slice(4);
     const last = segments.pop() ?? "";
     let into = state;
     for (const segment of segments) into = into[segment] as Record<string, unknown>;
@@ -59,7 +60,7 @@ describe("the class's update", () => {
   });
 
   test("keeps what the state holds of an id that the delta removes and adds again", () => {
-    const delta: Delta = { blocks: { rm: ["b"], add: { b: { registry_id: "blockr.core-head_block", state: {}, name: "B", locked: null } } } };
+    const delta: Delta = { blocks: { rm: ["b"], add: { b: { registry_id: id("blockr.core", "head_block"), state: {}, name: "B", locked: null } } } };
     expect(update(delta, board, GRAPH)).toEqual([]);
   });
 
@@ -71,7 +72,7 @@ describe("the class's update", () => {
 
   test("changes nothing for a delta that removes nothing, or where the state has another shape", () => {
     expect(update({ name: "Other" }, board, GRAPH)).toEqual([]);
-    expect(update({ blocks: { rm: ["b"] } }, { ...board, plugins: { [GRAPH]: { positions: [] } } }, GRAPH)).toEqual([]);
+    expect(update({ blocks: { rm: ["b"] } }, { ...board, plugins: { [GRAPH.package]: { [GRAPH.id]: { positions: [] } } } }, GRAPH)).toEqual([]);
   });
 });
 

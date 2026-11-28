@@ -23,7 +23,7 @@ interface CollapseStack {
 
 export const stackCommands = [
   command<CollapseStack>({
-    id: "blockr.graph-collapse_stack",
+    id: "collapse_stack",
     label: "Collapse or expand stack",
     description:
       "Collapses a stack, which then shows as a small box that holds its name and the number of its blocks, while the blocks around it close up on it, or expands a collapsed stack, putting back the blocks that its collapse moved. A stack that holds no block cannot collapse.",

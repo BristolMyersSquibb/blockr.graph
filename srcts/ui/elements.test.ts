@@ -1,21 +1,23 @@
 // The nodes and the edges that the DAG gives React Flow, from the board and
 // the DAG's state (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#nodes).
 
-import type { BlockRegistry, Board, RegistryEntry } from "@blockr/core";
+import type { BlockRegistry, Board, RegistryEntry, RegistryId } from "@blockr/core";
+import { id } from "@blockr/core/stubs";
 import { describe, expect, test } from "vitest";
 import { Position } from "../flow/index.ts";
 import { BLOCK_HEIGHT, blockWidth, canvasOf, changed, expandedBox, MARK, STACK_HEIGHT, STACK_WIDTH } from "../geometry/index.ts";
 import { defaultState, GRAPH } from "../state/index.ts";
 import type { GraphState, Layout } from "../state/index.ts";
-import { boardOf, withState } from "../testing/index.ts";
+import { boardOf, stateOf, withState } from "../testing/index.ts";
 import { elementsOf, HANDLE, NEXT, sideTowards } from "./elements.ts";
 import type { BlockNode, Drawing, GraphNode, HandleSpec, StackNode } from "./elements.ts";
 
-// A registry entry of a class with the inputs given.
-function entry(id: string, inputs: readonly string[], category = "transform"): RegistryEntry {
+// A registry entry of a class of blockr.core with the inputs given.
+function entry(cls: string, inputs: readonly string[], category = "transform"): RegistryEntry {
   return {
-    id,
-    name: id,
+    package: "blockr.core",
+    id: cls,
+    name: cls,
     description: "",
     keywords: [],
     category,
@@ -24,21 +26,28 @@ function entry(id: string, inputs: readonly string[], category = "transform"): R
     module: "",
     version: 1,
     schema: {},
-    block_name: id,
+    block_name: cls,
     state: {},
     requests: {},
   };
 }
 
-const REGISTRY: BlockRegistry = {
-  "blockr.core-head_block": entry("blockr.core-head_block", ["data"]),
-  "blockr.core-merge_block": entry("blockr.core-merge_block", ["x", "y"]),
-  "blockr.core-rbind_block": entry("blockr.core-rbind_block", ["..."]),
-  "blockr.core-dataset_block": entry("blockr.core-dataset_block", [], "input"),
-};
+// The registry ids of the classes of core's that the tests draw.
+const HEAD = id("blockr.core", "head_block");
+const MERGE = id("blockr.core", "merge_block");
+const RBIND = id("blockr.core", "rbind_block");
+const DATASET = id("blockr.core", "dataset_block");
+
+// The block registry by registry id, as core.blockRegistry() gives it.
+const REGISTRY: BlockRegistry = new Map([
+  [HEAD, entry("head_block", ["data"])],
+  [MERGE, entry("merge_block", ["x", "y"])],
+  [RBIND, entry("rbind_block", ["..."])],
+  [DATASET, entry("dataset_block", [], "input")],
+]);
 
 function drawn(board: Board, more: Partial<Drawing> = {}) {
-  const state = board.plugins[GRAPH] as GraphState;
+  const state = stateOf(board);
   return elementsOf({
     canvas: canvasOf(board, state),
     registry: REGISTRY,
@@ -82,7 +91,7 @@ function middle(spec: HandleSpec): { x: number; y: number } {
 
 // A board whose blocks have classes and names, with links that feed inputs.
 function classed(
-  blocks: Readonly<Record<string, string>>,
+  blocks: Readonly<Record<string, RegistryId>>,
   links: Readonly<Record<string, { from: string; to: string; input: string }>>,
   positions: GraphState["positions"],
   layout: Partial<Layout> = {},
@@ -94,7 +103,7 @@ function classed(
     links,
     stacks: {},
     options: {},
-    plugins: { [GRAPH]: { ...defaultState, positions, layout: { ...defaultState.layout, ...layout } } },
+    plugins: { [GRAPH.package]: { [GRAPH.id]: { ...defaultState, positions, layout: { ...defaultState.layout, ...layout } } } },
   };
 }
 
@@ -123,7 +132,7 @@ describe("a block's node", () => {
       state: { positions: { a: { x: 0, y: 0 }, b: { x: 0, y: 150 } } },
     });
     const { nodes } = drawn(board);
-    const box = expandedBox(canvasOf(board, board.plugins[GRAPH] as GraphState), "s1");
+    const box = expandedBox(canvasOf(board, stateOf(board)), "s1");
     if (box === undefined) throw new Error("No box");
     const s1 = stackNode(nodes, "s1");
     const [w, h] = [Math.ceil(box.w), Math.ceil(box.h)];
@@ -146,7 +155,7 @@ describe("a block's node", () => {
 });
 
 describe("a handle", () => {
-  const below = (x: number, y: number) => classed({ a: "blockr.core-dataset_block", b: "blockr.core-head_block" }, { ab: { from: "a", to: "b", input: "data" } }, { a: { x: 0, y: 0 }, b: { x, y } });
+  const below = (x: number, y: number) => classed({ a: DATASET, b: HEAD }, { ab: { from: "a", to: "b", input: "data" } }, { a: { x: 0, y: 0 }, b: { x, y } });
 
   test("sits on the side of the mark that faces the block at the other end of its link", () => {
     const { nodes, edges } = drawn(below(0, 150));
@@ -168,7 +177,7 @@ describe("a handle", () => {
 
   test("that no link uses sits on the side that the layout's direction gives", () => {
     const lone = (direction: Layout["direction"]) =>
-      blockNode(drawn(classed({ a: "blockr.core-head_block" }, {}, { a: { x: 0, y: 0 } }, { direction })).nodes, "a").data.handles;
+      blockNode(drawn(classed({ a: HEAD }, {}, { a: { x: 0, y: 0 } }, { direction })).nodes, "a").data.handles;
     expect(lone("TB").map((each) => [each.id, each.side])).toEqual([
       ["in:data", "top"],
       ["out-bottom", "bottom"],
@@ -181,7 +190,7 @@ describe("a handle", () => {
 
   test("of a result shows on each side that one of its links uses", () => {
     const board = classed(
-      { a: "blockr.core-dataset_block", b: "blockr.core-head_block", c: "blockr.core-head_block" },
+      { a: DATASET, b: HEAD, c: HEAD },
       { ab: { from: "a", to: "b", input: "data" }, ac: { from: "a", to: "c", input: "data" } },
       { a: { x: 0, y: 0 }, b: { x: 0, y: 150 }, c: { x: 250, y: 0 } },
     );
@@ -198,7 +207,7 @@ describe("a handle", () => {
     const b = blockNode(nodes, "b");
     expect(middle(handle(b, "in:data#ab"))).toEqual({ x: (b.width ?? 0) / 2, y: 0 });
     expect(middle(handle(b, "out-bottom"))).toEqual({ x: (b.width ?? 0) / 2, y: BLOCK_HEIGHT });
-    const lr = blockNode(drawn(classed({ a: "blockr.core-head_block" }, {}, { a: { x: 0, y: 0 } }, { direction: "LR" })).nodes, "a");
+    const lr = blockNode(drawn(classed({ a: HEAD }, {}, { a: { x: 0, y: 0 } }, { direction: "LR" })).nodes, "a");
     const lrLeft = ((lr.width ?? 0) - MARK) / 2;
     expect(middle(handle(lr, "in:data"))).toEqual({ x: lrLeft, y: MARK / 2 });
     expect(middle(handle(lr, "out-right"))).toEqual({ x: lrLeft + MARK, y: MARK / 2 });
@@ -214,7 +223,7 @@ describe("a handle", () => {
 
   test("names its input, with the block that the link that feeds it comes from", () => {
     const board = classed(
-      { a: "blockr.core-dataset_block", b: "blockr.core-dataset_block", c: "blockr.core-merge_block" },
+      { a: DATASET, b: DATASET, c: MERGE },
       { ac: { from: "a", to: "c", input: "x" } },
       { a: { x: -100, y: 0 }, b: { x: 100, y: 0 }, c: { x: 0, y: 150 } },
     );
@@ -227,7 +236,7 @@ describe("a handle", () => {
 
   test("on one side spreads along it, at least 12 px apart, in the order of the class's inputs", () => {
     const board = classed(
-      { a: "blockr.core-dataset_block", b: "blockr.core-dataset_block", c: "blockr.core-merge_block" },
+      { a: DATASET, b: DATASET, c: MERGE },
       { ac: { from: "a", to: "c", input: "x" }, bc: { from: "b", to: "c", input: "y" } },
       { a: { x: -100, y: 0 }, b: { x: 100, y: 0 }, c: { x: 0, y: 150 } },
     );
@@ -242,11 +251,11 @@ describe("a handle", () => {
   // A variadic block t, with links from blocks above it, or to its right,
   // and its result feeding a block to its right.
   const variadic = (links: number, from: "above" | "right") => {
-    const blocks: Record<string, string> = { t: "blockr.core-rbind_block", z: "blockr.core-head_block" };
+    const blocks: Record<string, RegistryId> = { t: RBIND, z: HEAD };
     const all: Record<string, { from: string; to: string; input: string }> = { tz: { from: "t", to: "z", input: "data" } };
     const positions: Record<string, { x: number; y: number }> = { t: { x: 0, y: 0 }, z: { x: 300, y: 20 } };
     for (let i = 0; i < links; i += 1) {
-      blocks[`s${String(i)}`] = "blockr.core-dataset_block";
+      blocks[`s${String(i)}`] = DATASET;
       positions[`s${String(i)}`] = from === "above" ? { x: -200 + 40 * i, y: -200 } : { x: 250, y: -40 + 10 * i };
       all[`l${String(i)}`] = { from: `s${String(i)}`, to: "t", input: "" };
     }
@@ -325,7 +334,7 @@ describe("a handle", () => {
   });
 
   test("on a side alone sits in the middle of the side", () => {
-    const board = classed({ a: "blockr.core-dataset_block", b: "blockr.core-head_block" }, { ab: { from: "a", to: "b", input: "data" } }, {
+    const board = classed({ a: DATASET, b: HEAD }, { ab: { from: "a", to: "b", input: "data" } }, {
       a: { x: 200, y: 0 },
       b: { x: 0, y: 0 },
     });
@@ -335,7 +344,7 @@ describe("a handle", () => {
 
   test("of a variadic block is one for each link into it, in their order, and a placeholder for its next place", () => {
     const board = classed(
-      { a: "blockr.core-dataset_block", b: "blockr.core-dataset_block", e: "blockr.core-rbind_block" },
+      { a: DATASET, b: DATASET, e: RBIND },
       { be: { from: "b", to: "e", input: "b2" }, ae: { from: "a", to: "e", input: "" } },
       { a: { x: -50, y: 0 }, b: { x: 50, y: 0 }, e: { x: 0, y: 150 } },
     );
@@ -358,7 +367,7 @@ describe("a handle", () => {
   });
 
   test("of an input that a link feeds is there where the block registry lacks the class", () => {
-    const board = classed({ a: "blockr.core-dataset_block", b: "blockr.test-gone_block" }, { ab: { from: "a", to: "b", input: "data" } }, {
+    const board = classed({ a: DATASET, b: id("blockr.test", "gone_block") }, { ab: { from: "a", to: "b", input: "data" } }, {
       a: { x: 0, y: 0 },
       b: { x: 0, y: 150 },
     });
@@ -394,7 +403,7 @@ describe("a stack", () => {
   test("that the DAG shows collapsed is a box of its own size, centred where its expanded box is, and its blocks hide", () => {
     const expanded = stacked({});
     const collapsed = withState(expanded, { stacks: { s1: { collapsed: 1, moved: { positions: {}, stacks: {} } } } });
-    const box = expandedBox(canvasOf(expanded, expanded.plugins[GRAPH] as GraphState), "s1");
+    const box = expandedBox(canvasOf(expanded, stateOf(expanded)), "s1");
     const { nodes } = drawn(collapsed);
     const s1 = stackNode(nodes, "s1");
     expect(s1.position).toEqual({ x: box?.x, y: box?.y });
@@ -428,7 +437,7 @@ describe("a stack", () => {
 
   test("draws its box around the moves that the DAG keeps while the user drags", () => {
     const board = stacked({});
-    const state = board.plugins[GRAPH] as GraphState;
+    const state = stateOf(board);
     const moved = changed(canvasOf(board, state), { positions: { b: { x: -200, y: 150 } }, points: {} });
     const { nodes } = elementsOf({ canvas: moved, registry: REGISTRY, layout: state.layout, selected: new Set(), hovered: null, locked: false, spread: null });
     const box = expandedBox(moved, "s1");

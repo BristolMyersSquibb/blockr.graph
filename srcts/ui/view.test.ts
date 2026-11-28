@@ -3,14 +3,13 @@
 
 import { describe, expect, test } from "vitest";
 import { canvasOf } from "../geometry/index.ts";
-import { GRAPH } from "../state/index.ts";
 import type { GraphState } from "../state/index.ts";
-import { boardOf } from "../testing/index.ts";
+import { boardOf, stateOf } from "../testing/index.ts";
 import { FIT_ZOOM, fittedView, savedView, saveView } from "./view.ts";
 
 function canvas(positions: GraphState["positions"]) {
   const board = boardOf({ blocks: { a: "A", b: "B" }, state: { positions } });
-  return canvasOf(board, board.plugins[GRAPH] as GraphState);
+  return canvasOf(board, stateOf(board));
 }
 
 describe("the fitted view", () => {

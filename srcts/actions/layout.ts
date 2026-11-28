@@ -3,17 +3,17 @@
 // It offers, in one level:
 //
 // - Lay out again, the two directions and the three spacings, which lay the
-//   whole board out again through blockr.graph-relayout, with the direction
-//   or the spacing that the row picks.
+//   whole board out again through relayout of blockr.graph, with the
+//   direction or the spacing that the row picks.
 // - The two placements of new blocks, Repulsion and Beside, which run
-//   blockr.graph-set_placement.
+//   set_placement of blockr.graph.
 // - Snap to grid, which turns snapping on or off, and the snap size, in a
-//   level of its own, which both run blockr.graph-set_snap.
+//   level of its own, which both run set_snap of blockr.graph.
 //
 // It checks the current direction, spacing and placement, and Snap to grid
 // while snapping is on, as today's menu shows the current direction and
 // spacing.
-// A row that lays the board out again runs blockr.graph-relayout itself, as
+// A row that lays the board out again runs relayout of blockr.graph itself, as
 // one step of the user, and then has each canvas fit its view to the board,
 // as the canvas fits the view as it first mounts on a board (./noted.ts).
 // The row runs the command itself, since a board action learns of no batch
@@ -46,7 +46,7 @@ export function layoutLevel(layout: Layout, core: CoreApi): QuickLevel {
     (args: { direction?: Layout["direction"]; spacing?: Layout["spacing"] }) =>
     async (): Promise<[]> => {
       // The menu shows the refusal in place of its rows, so core raises none.
-      await core.commands.run("blockr.graph-relayout", args, "user", { notifier: () => undefined });
+      await core.commands.run(core.id("blockr.graph", "relayout"), args, "user", { notifier: () => undefined });
       fitViews();
       return [];
     };
@@ -76,7 +76,7 @@ export function layoutLevel(layout: Layout, core: CoreApi): QuickLevel {
         heading: "New blocks",
         label,
         checked: layout.placement === placement,
-        pick: () => [{ id: "blockr.graph-set_placement", args: { placement } }],
+        pick: () => [{ id: core.id("blockr.graph", "set_placement"), args: { placement } }],
       }),
     ),
     {
@@ -84,22 +84,23 @@ export function layoutLevel(layout: Layout, core: CoreApi): QuickLevel {
       heading: "Snapping",
       label: "Snap to grid",
       checked: layout.snap,
-      pick: () => [{ id: "blockr.graph-set_snap", args: { snap: !layout.snap } }],
+      pick: () => [{ id: core.id("blockr.graph", "set_snap"), args: { snap: !layout.snap } }],
     },
     {
       kind: "item",
       heading: "Snapping",
       label: "Snap size…",
       detail: `${String(layout.snap_size)} px`,
-      pick: () => snapSizeLevel(layout.snap_size),
+      pick: () => snapSizeLevel(layout.snap_size, core),
     },
   ];
   return { title: "Layout", rows };
 }
 
 // The level that sets the snap size, in pixels of the canvas, which takes a
-// number above 0, as the schema of the DAG's state does.
-function snapSizeLevel(size: number): QuickLevel {
+// number above 0, as the schema of the DAG's state does. It names the command
+// by the Id that the caller's core.id() gives.
+function snapSizeLevel(size: number, core: Pick<CoreApi, "id">): QuickLevel {
   return {
     title: "Snap size",
     rows: [
@@ -110,7 +111,7 @@ function snapSizeLevel(size: number): QuickLevel {
         check: (value) => (sizeOf(value) === undefined ? "The snap size is a number of pixels above 0." : undefined),
         submit(value) {
           const next = sizeOf(value);
-          return next === undefined || next === size ? [] : [{ id: "blockr.graph-set_snap", args: { snap_size: next } }];
+          return next === undefined || next === size ? [] : [{ id: core.id("blockr.graph", "set_snap"), args: { snap_size: next } }];
         },
       },
     ],

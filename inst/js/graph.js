@@ -8,7 +8,7 @@ var graph_schema_default = {
       additionalProperties: {
         $ref: "#/definitions/Point"
       },
-      description: "Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand."
+      description: `Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run the command { "package": "blockr.graph", "id": "relayout" } before placing blocks by hand.`
     },
     stacks: {
       type: "object",
@@ -169,7 +169,7 @@ var graph_schema_default = {
         "snap_size"
       ],
       additionalProperties: false,
-      description: "How the DAG arranges the board. Changing the direction or the spacing through blockr.graph-relayout lays the whole board out again."
+      description: 'How the DAG arranges the board. Changing the direction or the spacing through the command { "package": "blockr.graph", "id": "relayout" } lays the whole board out again.'
     }
   }
 };
@@ -193,8 +193,8 @@ function patched(state, patches, plugin) {
   let at2 = state;
   for (const patch of patches) {
     const segments = segmentsFromPath(patch.path);
-    if (segments?.[0] !== "plugins" || segments[1] !== plugin) continue;
-    at2 = at2 === void 0 ? void 0 : applied(at2, segments.slice(2), patch);
+    if (segments?.[0] !== "plugins" || segments[1] !== plugin.package || segments[2] !== plugin.id) continue;
+    at2 = at2 === void 0 ? void 0 : applied(at2, segments.slice(3), patch);
   }
   return at2;
 }
@@ -215,14 +215,14 @@ function applied(at2, segments, patch) {
 }
 
 // srcts/state/state.ts
-var GRAPH = "blockr.graph-graph_plugin";
+var GRAPH = { package: "blockr.graph", id: "graph_plugin" };
 var defaultState = {
   positions: {},
   stacks: {},
   layout: { direction: "TB", spacing: "normal", placement: "repulsion", snap: false, snap_size: 20 }
 };
 function graphState(board, plugin = GRAPH) {
-  const state = board.plugins[plugin];
+  const state = board.plugins[plugin.package]?.[plugin.id];
   return isGraphState(state) ? state : void 0;
 }
 function isGraphState(value) {
@@ -331,7 +331,7 @@ function copiedBoard(json, copied) {
   const blocks = new Set(copied.blocks);
   const stacks = new Set(copied.stacks);
   const { board } = json;
-  const graph = board.plugins[GRAPH];
+  const graph = board.plugins[GRAPH.package]?.[GRAPH.id];
   const state = graph === void 0 || !isGraphState(graph.state) ? void 0 : graph.state;
   const taken = {
     ...board,
@@ -339,13 +339,13 @@ function copiedBoard(json, copied) {
     links: kept(board.links, (_id, link) => blocks.has(link.from) && blocks.has(link.to)),
     stacks: kept(board.stacks, (id) => stacks.has(id)),
     options: {},
-    plugins: graph === void 0 || state === void 0 ? {} : { [GRAPH]: { ...graph, state: copiedState(state, blocks, stacks) } }
+    plugins: graph === void 0 || state === void 0 ? {} : { [GRAPH.package]: { [GRAPH.id]: { ...graph, state: copiedState(state, blocks, stacks) } } }
   };
   return { ...json, packages: packagesOf(taken, json.packages), board: taken };
 }
 function packagesOf(board, packages) {
-  const ids = [...Object.values(board.blocks).map((block) => block.registry_id), ...Object.keys(board.plugins)];
-  return kept(packages, (pkg) => ids.some((id) => id.startsWith(`${pkg}-`)));
+  const used = /* @__PURE__ */ new Set([...Object.values(board.blocks).flatMap((block) => block.registry_id.package ?? []), ...Object.keys(board.plugins)]);
+  return kept(packages, (pkg) => used.has(pkg));
 }
 function copiedState(state, blocks, stacks) {
   return {
@@ -404,7 +404,7 @@ var PLACEMENTS = [
 ];
 function layoutLevel(layout, core) {
   const relayout = (args) => async () => {
-    await core.commands.run("blockr.graph-relayout", args, "user", { notifier: () => void 0 });
+    await core.commands.run(core.id("blockr.graph", "relayout"), args, "user", { notifier: () => void 0 });
     fitViews();
     return [];
   };
@@ -434,7 +434,7 @@ function layoutLevel(layout, core) {
         heading: "New blocks",
         label,
         checked: layout.placement === placement,
-        pick: () => [{ id: "blockr.graph-set_placement", args: { placement } }]
+        pick: () => [{ id: core.id("blockr.graph", "set_placement"), args: { placement } }]
       })
     ),
     {
@@ -442,19 +442,19 @@ function layoutLevel(layout, core) {
       heading: "Snapping",
       label: "Snap to grid",
       checked: layout.snap,
-      pick: () => [{ id: "blockr.graph-set_snap", args: { snap: !layout.snap } }]
+      pick: () => [{ id: core.id("blockr.graph", "set_snap"), args: { snap: !layout.snap } }]
     },
     {
       kind: "item",
       heading: "Snapping",
       label: "Snap size\u2026",
       detail: `${String(layout.snap_size)} px`,
-      pick: () => snapSizeLevel(layout.snap_size)
+      pick: () => snapSizeLevel(layout.snap_size, core)
     }
   ];
   return { title: "Layout", rows };
 }
-function snapSizeLevel(size) {
+function snapSizeLevel(size, core) {
   return {
     title: "Snap size",
     rows: [
@@ -465,7 +465,7 @@ function snapSizeLevel(size) {
         check: (value) => sizeOf(value) === void 0 ? "The snap size is a number of pixels above 0." : void 0,
         submit(value) {
           const next = sizeOf(value);
-          return next === void 0 || next === size ? [] : [{ id: "blockr.graph-set_snap", args: { snap_size: next } }];
+          return next === void 0 || next === size ? [] : [{ id: core.id("blockr.graph", "set_snap"), args: { snap_size: next } }];
         }
       }
     ]
@@ -1143,25 +1143,26 @@ function placeAdded(canvas, added, moved, layout, placement = layout.placement) 
 
 // srcts/actions/paste.ts
 var COPY = " (copy)";
-function pasteBatch(board, read, point, mint) {
-  const blocks = renamed(Object.keys(read.blocks), board.blocks, mint);
-  const stacks = renamed(Object.keys(read.stacks), board.stacks, mint);
+function pasteBatch(board, read, point, core) {
+  const blocks = renamed(Object.keys(read.blocks), board.blocks, core);
+  const stacks = renamed(Object.keys(read.stacks), board.stacks, core);
   const pastedLinks = Object.entries(read.links).filter(([, link]) => blocks.has(link.from) && blocks.has(link.to));
   const links = renamed(
     pastedLinks.map(([id]) => id),
     board.links,
-    mint
+    core
   );
   const batch = [];
   for (const [id, block] of Object.entries(read.blocks)) {
+    const { package: pkg, id: cls } = block.registry_id;
     batch.push({
-      id: "blockr.core-add_block",
-      args: { registry_id: block.registry_id, id: newId(blocks, id), name: block.name, state: block.state }
+      id: core.id("blockr.core", "add_block"),
+      args: { registry_id: { package: pkg, id: cls }, id: newId(blocks, id), name: block.name, state: block.state }
     });
   }
   for (const [id, stack2] of Object.entries(read.stacks)) {
     batch.push({
-      id: "blockr.core-add_stack",
+      id: core.id("blockr.core", "add_stack"),
       args: {
         id: newId(stacks, id),
         name: `${stack2.name}${COPY}`,
@@ -1172,7 +1173,7 @@ function pasteBatch(board, read, point, mint) {
   }
   for (const [id, link] of pastedLinks) {
     batch.push({
-      id: "blockr.core-add_link",
+      id: core.id("blockr.core", "add_link"),
       args: {
         id: newId(links, id),
         from: newId(blocks, link.from),
@@ -1182,14 +1183,14 @@ function pasteBatch(board, read, point, mint) {
     });
   }
   const moved = positionsOf(board, read, blocks, stacks, point);
-  if (moved !== void 0) batch.push({ id: "blockr.graph-change_position", args: moved });
+  if (moved !== void 0) batch.push({ id: core.id("blockr.graph", "change_position"), args: moved });
   return batch;
 }
-function renamed(ids, collection, mint) {
+function renamed(ids, collection, core) {
   const minted = /* @__PURE__ */ new Map();
   const taken = /* @__PURE__ */ new Set();
   for (const id of ids) {
-    const next = mint((candidate) => Object.hasOwn(collection, candidate) || taken.has(candidate));
+    const next = core.mintId((candidate) => Object.hasOwn(collection, candidate) || taken.has(candidate));
     taken.add(next);
     minted.set(id, next);
   }
@@ -1230,10 +1231,10 @@ function shiftedCanvas(canvas, dx, dy) {
 }
 
 // srcts/actions/actions.ts
-var COPY2 = "blockr.graph-copy_action";
-var CUT = "blockr.graph-cut_action";
-var PASTE = "blockr.graph-paste_action";
-var LAYOUT = "blockr.graph-layout_action";
+var COPY2 = "copy_action";
+var CUT = "cut_action";
+var PASTE = "paste_action";
+var LAYOUT = "layout_action";
 var NOTHING_TO_PASTE = "The clipboard holds no board objects to paste.";
 var CLIPBOARD_UNREAD = "The browser did not let the page read the clipboard.";
 var told;
@@ -1260,8 +1261,8 @@ var graphBoardActions = [
     run(_board, target, core) {
       const { blocks, stacks } = copy(target, core);
       return [
-        ...blocks.map((id) => ({ id: "blockr.core-remove_block", args: { id } })),
-        ...stacks.map((id) => ({ id: "blockr.core-remove_stack", args: { id } }))
+        ...blocks.map((id) => ({ id: core.id("blockr.core", "remove_block"), args: { id } })),
+        ...stacks.map((id) => ({ id: core.id("blockr.core", "remove_stack"), args: { id } }))
       ];
     }
   },
@@ -1276,7 +1277,7 @@ var graphBoardActions = [
       told?.();
       told = void 0;
       const tell = (severity, message, code) => {
-        told = core.notifications.notify(GRAPH, { severity, message, code, about: null });
+        told = core.notifications.notify(core.id(GRAPH.package, GRAPH.id), { severity, message, code, about: null });
       };
       const point = notedPoint();
       const text = await readClipboard(document);
@@ -1292,7 +1293,7 @@ var graphBoardActions = [
         else tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
         return void 0;
       }
-      const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken));
+      const batch = pasteBatch(core.store.board(), read.board, point, core);
       if (batch.length > 0) return batch;
       if (!read.dropped.some((dropped) => "block" in dropped.about)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
       return void 0;
@@ -1399,7 +1400,7 @@ function loadDagre() {
 
 // srcts/patches/patches.ts
 function at(plugin, ...segments) {
-  return pointer(["plugins", plugin, ...segments]);
+  return pointer(["plugins", plugin.package, plugin.id, ...segments]);
 }
 function changePatches(state, changes, plugin) {
   const set = (part, id, value) => ({
@@ -1468,7 +1469,7 @@ var stack = { type: "string", description: "The id of a stack of the board." };
 // srcts/commands/layout.ts
 var layoutCommands = [
   command({
-    id: "blockr.graph-relayout",
+    id: "relayout",
     label: "Lay out again",
     description: "Lays the whole board out again, every block and every stack that holds no block, with the direction and the spacing given, which the DAG keeps from then on, or with those it holds where they are left out. It moves every block, so run it before placing blocks by hand, never after.",
     args: object({
@@ -1499,7 +1500,7 @@ var layoutCommands = [
     }
   }),
   command({
-    id: "blockr.graph-set_placement",
+    id: "set_placement",
     label: "Set placement",
     description: "Sets how the DAG places the blocks that later edits add: repulsion keeps a new block where it starts and moves the blocks around it out of its way, and beside moves the new block on to the nearest free spot and moves no other block. It moves no block itself.",
     args: object(
@@ -1514,7 +1515,7 @@ var layoutCommands = [
     }
   }),
   command({
-    id: "blockr.graph-set_snap",
+    id: "set_snap",
     label: "Set snapping",
     description: "Sets whether the DAG snaps every position that it sets to a multiple of the snap size, and the snap size, in pixels of the canvas. It moves no block itself: the next move or layout snaps.",
     args: object({
@@ -1548,7 +1549,7 @@ function emptied(state) {
 // srcts/commands/positions.ts
 var positionCommands = [
   command({
-    id: "blockr.graph-change_position",
+    id: "change_position",
     label: "Move blocks",
     description: "Moves blocks, and stacks that hold no block, to the positions given, as a drag on the canvas does. A block's position is the centre of its node, which holds its mark and its name below it. A stack that holds blocks has no position of its own, since its box fits its blocks, so move its blocks instead. A position given for a block that the same batch adds is where the DAG starts to place it, after the command that adds it. Every block and stack left out stays where it is.",
     args: object({
@@ -1657,7 +1658,7 @@ function difference(first, second) {
 // srcts/commands/stacks.ts
 var stackCommands = [
   command({
-    id: "blockr.graph-collapse_stack",
+    id: "collapse_stack",
     label: "Collapse or expand stack",
     description: "Collapses a stack, which then shows as a small box that holds its name and the number of its blocks, while the blocks around it close up on it, or expands a collapsed stack, putting back the blocks that its collapse moved. A stack that holds no block cannot collapse.",
     args: object(
@@ -1871,7 +1872,7 @@ function update(delta, board, plugin) {
   const blocks = removed(delta.blocks?.rm, delta.blocks?.add);
   const stacks = removed(delta.stacks?.rm, delta.stacks?.add);
   if (blocks.length === 0 && stacks.length === 0) return [];
-  const stored = board.plugins[plugin];
+  const stored = board.plugins[plugin.package]?.[plugin.id];
   const state = stored === void 0 ? void 0 : patched(stored, delta.patches ?? [], plugin);
   if (!isGraphState(state)) return [];
   const remove = (part, id) => ({ op: "remove", path: at(plugin, part, id) });
@@ -1906,7 +1907,7 @@ import {
 import { useEffect, useMemo, useRef } from "react";
 
 // srcts/ui/added.ts
-function startAt(after, deltas, point) {
+function startAt(after, deltas, point, core) {
   const blocks = /* @__PURE__ */ new Set();
   const stacks = /* @__PURE__ */ new Set();
   for (const delta of deltas) {
@@ -1919,10 +1920,12 @@ function startAt(after, deltas, point) {
   const [first] = linkOrder(after, blocks);
   if (first !== void 0) {
     const at2 = freeAt(after, state, blockBox(point, after.blocks[first]?.name ?? ""));
-    return [{ id: "blockr.graph-change_position", args: { positions: { [first]: at2 } } }];
+    return [{ id: core.id("blockr.graph", "change_position"), args: { positions: { [first]: at2 } } }];
   }
   const [stack2] = stacks;
-  if (stack2 !== void 0) return [{ id: "blockr.graph-change_position", args: { stacks: { [stack2]: freeAt(after, state, stackBoxAt(point)) } } }];
+  if (stack2 !== void 0) {
+    return [{ id: core.id("blockr.graph", "change_position"), args: { stacks: { [stack2]: freeAt(after, state, stackBoxAt(point)) } } }];
+  }
   return [];
 }
 function freeAt(board, state, box) {
@@ -1954,7 +1957,7 @@ function graphActions({ core, element, toCanvas, refuse, panel }) {
     } catch {
       return [];
     }
-    return startAt(after, deltas, point);
+    return startAt(after, deltas, point, core);
   };
   const notifierAt = (client) => (notifications) => {
     refuse(client, notifications.map((notification) => notification.message).join("\n"));
@@ -2100,7 +2103,7 @@ function elementsOf(drawing) {
     const point = canvas.positions[id];
     const stack2 = held.get(id);
     if (point === void 0 || stack2 !== void 0 && canvas.collapsed.has(stack2)) continue;
-    const entry = registry[block.registry_id];
+    const entry = registry.get(block.registry_id);
     const width = blockWidth(block.name);
     const spreading = spread?.node === blockNode2(id) ? spread.side : null;
     const handles = blockHandles({ board, id, entry, width, layout, links, byId, locked, spreading });
@@ -2438,15 +2441,15 @@ function joins(start2, moves2, nodes) {
 function contains(box, point) {
   return Math.abs(point.x - box.x) <= box.w / 2 && Math.abs(point.y - box.y) <= box.h / 2;
 }
-function movesBatch(canvas, moves2, joined = /* @__PURE__ */ new Map()) {
+function movesBatch(canvas, moves2, core, joined = /* @__PURE__ */ new Map()) {
   const positions = movedOnly(canvas.positions, moves2.positions);
   const stacks = movedOnly(canvas.points, moves2.points);
   const batch = [];
   for (const [stack2, blocks] of joiningBlocks(canvas.board, joined)) {
-    batch.push({ id: "blockr.core-change_stack", args: { id: stack2, blocks } });
+    batch.push({ id: core.id("blockr.core", "change_stack"), args: { id: stack2, blocks } });
   }
   if (Object.keys(positions).length > 0 || Object.keys(stacks).length > 0) {
-    batch.push({ id: "blockr.graph-change_position", args: { positions, stacks } });
+    batch.push({ id: core.id("blockr.graph", "change_position"), args: { positions, stacks } });
   }
   return batch;
 }
@@ -2603,7 +2606,7 @@ function DrawnStack({ data, selected }) {
       className: "blockr-graph-collapse nodrag",
       "aria-label": data.shows === "collapsed" ? `Expand ${data.name}` : `Collapse ${data.name}`,
       onPress: () => {
-        void core.commands.run("blockr.graph-collapse_stack", { stack: data.stack, collapsed: data.shows !== "collapsed" });
+        void core.commands.run(core.id("blockr.graph", "collapse_stack"), { stack: data.stack, collapsed: data.shows !== "collapsed" });
       },
       children: /* @__PURE__ */ jsx3(Chevron, { collapsed: data.shows === "collapsed" })
     }
@@ -2766,8 +2769,8 @@ function Canvas({ hovered, spread, size, onRefusal }) {
   const runKeys = useCallback(() => {
     clearTimeout(keyTimer.current);
     if (drag.current !== null || movesRef.current === NO_MOVES) return;
-    void runMoves(movesBatch(current(), movesRef.current));
-  }, [current, runMoves]);
+    void runMoves(movesBatch(current(), movesRef.current, core));
+  }, [core, current, runMoves]);
   useEffect2(
     () => () => {
       clearTimeout(keyTimer.current);
@@ -2804,8 +2807,8 @@ function Canvas({ hovered, spread, size, onRefusal }) {
     if (ended === null) return;
     const now = movesRef.current;
     const joined = locked ? /* @__PURE__ */ new Map() : joins(ended.canvas, now, ended.from.keys());
-    void runMoves(movesBatch(current(), now, joined));
-  }, [current, locked, runMoves]);
+    void runMoves(movesBatch(current(), now, core, joined));
+  }, [core, current, locked, runMoves]);
   const selects = useRef2([]);
   const clicked = useRef2(null);
   const flushing = useRef2(false);
@@ -2894,7 +2897,7 @@ function Canvas({ hovered, spread, size, onRefusal }) {
         refuse(drop.taken);
         return;
       }
-      core.commands.run("blockr.core-add_link", drop.add, "user", {
+      core.commands.run(core.id("blockr.core", "add_link"), drop.add, "user", {
         notifier: (notifications) => {
           refuse(notifications.map((notification) => notification.message).join("\n"));
         }
@@ -2960,7 +2963,7 @@ function Canvas({ hovered, spread, size, onRefusal }) {
       },
       onNodeDoubleClick: (_event, node) => {
         if (node.data.kind !== "stack" || node.data.shows === "empty") return;
-        core.commands.run("blockr.graph-collapse_stack", { stack: node.data.stack, collapsed: node.data.shows === "expanded" }).catch(() => void 0);
+        core.commands.run(core.id("blockr.graph", "collapse_stack"), { stack: node.data.stack, collapsed: node.data.shows === "expanded" }).catch(() => void 0);
       },
       onPaneClick: () => {
         if (core.selection.get().length > 0) core.selection.set([]);
@@ -3012,13 +3015,13 @@ function keyAction(pressed, selection, text) {
   const mod = pressed.metaKey || pressed.ctrlKey;
   if (pressed.altKey || pressed.shiftKey) return void 0;
   const chosen = selection.length === 0 ? void 0 : { selection };
-  if (pressed.key === "Backspace" && !mod) return chosen === void 0 ? void 0 : { id: "remove_selected_role", target: chosen };
+  if (pressed.key === "Backspace" && !mod) return chosen === void 0 ? void 0 : { action: { role: "remove_selected_role" }, target: chosen };
   if (!mod) return void 0;
   switch (pressed.key.toLowerCase()) {
     case "c":
-      return text || chosen === void 0 ? void 0 : { id: COPY2, target: chosen };
+      return text || chosen === void 0 ? void 0 : { action: { id: COPY2 }, target: chosen };
     case "x":
-      return text || chosen === void 0 ? void 0 : { id: CUT, target: chosen };
+      return text || chosen === void 0 ? void 0 : { action: { id: CUT }, target: chosen };
     default:
       return void 0;
   }
@@ -3259,7 +3262,7 @@ function addedTarget(core, action, deltas) {
   return offered.length === 1 ? offered[0] : void 0;
 }
 function offers(core, target, action) {
-  return core.boardActions.on(target).some((each) => each.id === action);
+  return core.boardActions.on(target).some((each) => core.id(each.package, each.id) === action);
 }
 function holds(board, target) {
   if ("board" in target) return true;
@@ -3355,7 +3358,7 @@ function SearchPanel({ onClose }) {
     const stack2 = "block" in object2 ? outline.stacks.find(({ blocks }) => blocks.some(({ block }) => block === object2.block)) : void 0;
     const state = graphState(before, plugin) ?? defaultState;
     if (stack2 !== void 0 && canvasOf(before, state).collapsed.has(stack2.stack)) {
-      await core.commands.run("blockr.graph-collapse_stack", { stack: stack2.stack, collapsed: false }).catch(() => void 0);
+      await core.commands.run(core.id("blockr.graph", "collapse_stack"), { stack: stack2.stack, collapsed: false }).catch(() => void 0);
     }
     const now = core.store.board();
     const centre = centreOf(canvasOf(now, graphState(now, plugin) ?? defaultState), key);
@@ -3425,16 +3428,29 @@ var SELECTION_TOOLS = [
   { kind: "button", action: { role: "remove_selected_role" }, icon: BIN }
 ];
 function shownTools(tools, offered) {
-  const find = (listed) => offered.find((action) => "role" in listed ? action.role === listed.role : action.id === listed.id);
+  const find = (listed) => offered.find((action) => "role" in listed ? action.role === listed.role : action.package === "blockr.graph" && action.id === listed.id);
   return tools.flatMap((tool) => {
     if (tool.kind === "add") {
-      const actions = tool.actions.flatMap((listed) => find(listed) ?? []);
+      const actions = tool.actions.flatMap((listed) => {
+        const action2 = find(listed);
+        return action2 === void 0 ? [] : [{ listed, action: action2 }];
+      });
       return actions.length === 0 ? [] : [{ kind: "add", label: tool.label, actions }];
     }
     const action = find(tool.action);
     if (action === void 0) return [];
-    return [{ kind: "button", action, icon: action.icon === void 0 || action.icon === "" ? tool.icon ?? "" : action.icon }];
+    return [
+      {
+        kind: "button",
+        listed: tool.action,
+        action,
+        icon: action.icon === void 0 || action.icon === "" ? tool.icon ?? "" : action.icon
+      }
+    ];
   });
+}
+function listedKey(listed) {
+  return "role" in listed ? `role:${listed.role}` : `id:${listed.id}`;
 }
 
 // srcts/ui/toolbar.tsx
@@ -3487,13 +3503,13 @@ function Control({ label, onPress, pressed, children }) {
   ] });
 }
 function keyOf(tool) {
-  return tool.kind === "add" ? "add" : tool.action.id;
+  return tool.kind === "add" ? "add" : listedKey(tool.listed);
 }
 function ToolView({ tool, target }) {
   return tool.kind === "add" ? /* @__PURE__ */ jsx7(AddButton, { label: tool.label, actions: tool.actions, target }) : /* @__PURE__ */ jsx7(ActionButton, { action: tool.action, icon: tool.icon, target });
 }
 function ActionButton({ action, icon, target }) {
-  const { actions } = useGraph();
+  const { core, actions } = useGraph();
   return /* @__PURE__ */ jsxs6(TooltipTrigger2, { delay: DELAY2, children: [
     /* @__PURE__ */ jsx7(
       Button3,
@@ -3502,7 +3518,7 @@ function ActionButton({ action, icon, target }) {
         className: "blockr-graph-control",
         "aria-label": action.label,
         onPress: (event) => {
-          if (event.target instanceof HTMLElement) void actions.trigger(action.id, target, { button: event.target });
+          if (event.target instanceof HTMLElement) void actions.trigger(core.id(action.package, action.id), target, { button: event.target });
         },
         children: /* @__PURE__ */ jsx7("span", { className: "blockr-graph-action-icon", "aria-hidden": "true", dangerouslySetInnerHTML: { __html: icon } })
       }
@@ -3510,8 +3526,12 @@ function ActionButton({ action, icon, target }) {
     /* @__PURE__ */ jsx7(Tooltip2, { placement: "right", children: action.label })
   ] });
 }
-function AddButton({ label, actions, target }) {
-  const { actions: graph } = useGraph();
+function AddButton({
+  label,
+  actions,
+  target
+}) {
+  const { core, actions: graph } = useGraph();
   const button = useRef5(null);
   return /* @__PURE__ */ jsxs6(MenuTrigger, { placement: "right top", children: [
     /* @__PURE__ */ jsxs6(TooltipTrigger2, { delay: DELAY2, children: [
@@ -3524,11 +3544,11 @@ function AddButton({ label, actions, target }) {
         "aria-label": label,
         className: "blockr-graph-add-menu",
         onAction: (key) => {
-          const picked = actions.find((action) => action.id === key);
+          const picked = actions.find(({ listed }) => listedKey(listed) === key)?.action;
           const el = button.current;
-          if (picked !== void 0 && el !== null) void graph.trigger(picked.id, target, { button: el });
+          if (picked !== void 0 && el !== null) void graph.trigger(core.id(picked.package, picked.id), target, { button: el });
         },
-        children: actions.map((action) => /* @__PURE__ */ jsx7(MenuItem, { id: action.id, children: action.label }, action.id))
+        children: actions.map(({ listed, action }) => /* @__PURE__ */ jsx7(MenuItem, { id: listedKey(listed), children: action.label }, listedKey(listed)))
       }
     )
   ] });
@@ -3603,10 +3623,10 @@ function GraphFrame({ core, plugin }) {
     if (el === null) return;
     return onPaste(el, (text) => {
       notePasted(text);
-      void actions.trigger(PASTE, { board: true }, { key: true });
+      void actions.trigger(core.id("blockr.graph", PASTE), { board: true }, { key: true });
       notePasted(void 0);
     });
-  }, [actions]);
+  }, [actions, core]);
   const graph = useMemo5(
     () => ({
       core,
@@ -3683,10 +3703,11 @@ function GraphFrame({ core, plugin }) {
           return;
         }
         const text = event.currentTarget.ownerDocument.getSelection()?.toString() ?? "";
-        const action = keyAction(event, core.selection.get(), text !== "");
-        if (action === void 0) return;
+        const pressed = keyAction(event, core.selection.get(), text !== "");
+        if (pressed === void 0) return;
         event.preventDefault();
-        void actions.trigger(action.id, action.target, { key: true });
+        const { action, target } = pressed;
+        void actions.trigger("role" in action ? action.role : core.id("blockr.graph", action.id), target, { key: true });
       },
       children: [
         /* @__PURE__ */ jsxs7("div", { ref: stage, className: "blockr-graph-stage", children: [

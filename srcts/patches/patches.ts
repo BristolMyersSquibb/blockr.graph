@@ -10,14 +10,15 @@ import { isCollapse, pointer } from "../state/index.ts";
 import type { GraphState, StackEntry } from "../state/index.ts";
 
 // The JSON Pointer from the board's root to the segments given, inside the
-// state of the plugin.
-export function at(plugin: PluginClassId, ...segments: string[]): string {
-  return pointer(["plugins", plugin, ...segments]);
+// state of the plugin, which the board holds under the package and the id of
+// the plugin's class, as /plugins/blockr.graph/graph_plugin/positions/a.
+export function at(plugin: Pick<PluginClassId, "package" | "id">, ...segments: string[]): string {
+  return pointer(["plugins", plugin.package, plugin.id, ...segments]);
 }
 
 // The patches that set the positions of blocks, and of stacks that hold no
 // block, that the changes give.
-export function changePatches(state: GraphState, changes: Changes, plugin: PluginClassId): Patch[] {
+export function changePatches(state: GraphState, changes: Changes, plugin: Pick<PluginClassId, "package" | "id">): Patch[] {
   const set = (part: "positions" | "stacks", id: string, value: Patch["value"]): Patch => ({
     op: Object.hasOwn(state[part], id) ? "replace" : "add",
     path: at(plugin, part, id),
@@ -34,7 +35,7 @@ export function changePatches(state: GraphState, changes: Changes, plugin: Plugi
 export function entryPatches(
   state: GraphState,
   entries: Readonly<Record<StackId, StackEntry | null>>,
-  plugin: PluginClassId,
+  plugin: Pick<PluginClassId, "package" | "id">,
 ): Patch[] {
   return Object.entries(entries).flatMap(([id, entry]): Patch[] => {
     const has = Object.hasOwn(state.stacks, id);
@@ -51,7 +52,7 @@ export function unmovedPatches(
   state: GraphState,
   blocks: Iterable<BlockId>,
   stacks: Iterable<StackId>,
-  plugin: PluginClassId,
+  plugin: Pick<PluginClassId, "package" | "id">,
   except: ReadonlySet<StackId> = new Set(),
 ): Patch[] {
   const [gone, goneStacks] = [[...blocks], [...stacks]];

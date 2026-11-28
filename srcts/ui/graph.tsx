@@ -141,10 +141,10 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
     if (el === null) return;
     return onPaste(el, (text) => {
       notePasted(text);
-      void actions.trigger(PASTE, { board: true }, { key: true });
+      void actions.trigger(core.id("blockr.graph", PASTE), { board: true }, { key: true });
       notePasted(undefined);
     });
-  }, [actions]);
+  }, [actions, core]);
 
   const graph = useMemo<Graph>(
     () => ({
@@ -225,10 +225,11 @@ function GraphFrame({ core, plugin }: { core: CoreApi; plugin: PluginClassId }):
             return;
           }
           const text = event.currentTarget.ownerDocument.getSelection()?.toString() ?? "";
-          const action = keyAction(event, core.selection.get(), text !== "");
-          if (action === undefined) return;
+          const pressed = keyAction(event, core.selection.get(), text !== "");
+          if (pressed === undefined) return;
           event.preventDefault();
-          void actions.trigger(action.id, action.target, { key: true });
+          const { action, target } = pressed;
+          void actions.trigger("role" in action ? action.role : core.id("blockr.graph", action.id), target, { key: true });
         }}
       >
         <div ref={stage} className="blockr-graph-stage">

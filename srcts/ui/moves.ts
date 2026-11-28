@@ -1,6 +1,6 @@
 // What dragging nodes and pressing the arrow keys move, which the DAG keeps in
 // its component until the drag ends or the user pauses, and then runs as one
-// blockr.graph-change_position
+// change_position of blockr.graph
 // (https://github.com/BristolMyersSquibb/blockr/wiki/Rewrite-1.3.2#gestures).
 // Each node is named by its id in React Flow (./ids.ts), and each point is a
 // centre on the canvas, as the DAG's state keeps a position.
@@ -10,13 +10,13 @@
 // - A stack with blocks, expanded or collapsed, moves its blocks by the
 //   distance that its box moves.
 // - While snapping is on, each position that a move gives rounds to the snap
-//   size, so that the drag ends where blockr.graph-change_position keeps each
-//   node.
+//   size, so that the drag ends where change_position of blockr.graph keeps
+//   each node.
 // - A drag moves every node by the move of the node under the pointer, since
 //   React Flow moves the node under the pointer by its drag threshold, 5 px,
 //   more than the others where one of them is in a stack.
 
-import type { BlockId, Board, CommandCall, Json, StackId } from "@blockr/core";
+import type { BlockId, Board, CommandCall, CoreApi, Json, StackId } from "@blockr/core";
 import { boxOfBlock, merged, nodeChanges, shifted, shownBox, snapPoint, stackOf } from "../geometry/index.ts";
 import type { Box, Canvas, CanvasNode, Changes } from "../geometry/index.ts";
 import type { Layout, Point } from "../state/index.ts";
@@ -124,16 +124,22 @@ function contains(box: Box, point: Point): boolean {
 // The batch that ends a drag or a run of presses: core's change_stack for each
 // stack that blocks join, and the DAG's change_position with every block and
 // every stack without blocks that moved, as one step. It is empty where
-// nothing moved.
-export function movesBatch(canvas: Canvas, moves: Changes, joined: ReadonlyMap<BlockId, StackId> = new Map()): CommandCall[] {
+// nothing moved. It names each command by the Id that the caller's core.id()
+// gives.
+export function movesBatch(
+  canvas: Canvas,
+  moves: Changes,
+  core: Pick<CoreApi, "id">,
+  joined: ReadonlyMap<BlockId, StackId> = new Map(),
+): CommandCall[] {
   const positions = movedOnly(canvas.positions, moves.positions);
   const stacks = movedOnly(canvas.points, moves.points);
   const batch: CommandCall[] = [];
   for (const [stack, blocks] of joiningBlocks(canvas.board, joined)) {
-    batch.push({ id: "blockr.core-change_stack", args: { id: stack, blocks } });
+    batch.push({ id: core.id("blockr.core", "change_stack"), args: { id: stack, blocks } });
   }
   if (Object.keys(positions).length > 0 || Object.keys(stacks).length > 0) {
-    batch.push({ id: "blockr.graph-change_position", args: { positions, stacks } });
+    batch.push({ id: core.id("blockr.graph", "change_position"), args: { positions, stacks } });
   }
   return batch;
 }

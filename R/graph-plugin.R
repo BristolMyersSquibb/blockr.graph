@@ -3,8 +3,10 @@
 #' The DAG draws the board as a directed acyclic graph: a node for each block,
 #' an edge for each link and a box for each stack.
 #' The constructor `new_graph_plugin()` makes the DAG plugin, of class
-#' `c("graph_plugin", "plugin")`, whose plugin class has the id
-#' `blockr.graph-graph_plugin` (see [blockr.core::new_plugin()]).
+#' `c("graph_plugin", "plugin")` (see [blockr.core::new_plugin()]).
+#' Its plugin class has the id
+#' `list(package = "blockr.graph", id = "graph_plugin")`, as
+#' [blockr.core::plugin_class_id()] gives it.
 #' The DAG keeps its state in the board, in three parts:
 #'
 #' * The positions, in `positions`: where the node of each block sits on the

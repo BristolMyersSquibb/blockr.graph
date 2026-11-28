@@ -19,8 +19,9 @@
 // It names every entry that it drops in one warning about the DAG, of the
 // code `graph_state_dropped`, which holds until the next board opens, as
 // core's note of what the store dropped does, and logs the same at warn.
-// The delta has the origin of the DAG plugin's class and `undo: false`, so
-// that undo never takes the board back to blocks without positions.
+// The delta's origin is the id of the DAG plugin's class, the Id that core
+// hands `start`. The delta has `undo: false`, so that undo never takes the
+// board back to blocks without positions.
 // Core calls `start` once the frontend's render() has returned, so a step
 // that the frontend takes as it starts comes before it.
 
@@ -43,7 +44,7 @@ const PACKAGE = "blockr.graph";
 export type Starting = { readonly patches: readonly Patch[]; readonly dropped: readonly string[] } | "layout";
 
 // The step that starting takes on the board, given dagre where it has loaded.
-export function starting(board: Board, plugin: PluginClassId, dagre?: Dagre): Starting {
+export function starting(board: Board, plugin: Pick<PluginClassId, "package" | "id">, dagre?: Dagre): Starting {
   const state = graphState(board, plugin);
   if (state === undefined) return { patches: [], dropped: [] };
   const { kept, patches, dropped } = fitted(board, state, plugin);
@@ -72,7 +73,11 @@ export function starting(board: Board, plugin: PluginClassId, dagre?: Dagre): St
 // it, and each entry that they drop, in words.
 // A stack that holds no block keeps its collapse in `kept`'s patches, since
 // the position that it gets replaces the collapse in one patch.
-function fitted(board: Board, state: GraphState, plugin: PluginClassId): { kept: GraphState; patches: Patch[]; dropped: string[] } {
+function fitted(
+  board: Board,
+  state: GraphState,
+  plugin: Pick<PluginClassId, "package" | "id">,
+): { kept: GraphState; patches: Patch[]; dropped: string[] } {
   const patches: Patch[] = [];
   const dropped: string[] = [];
   const drop = (path: string, what: string) => {

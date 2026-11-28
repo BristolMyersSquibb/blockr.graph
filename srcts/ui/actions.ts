@@ -7,7 +7,7 @@
 //   core.boardActions.menu(), at the pointer, or the menu of the selection
 //   where the object is one of several that the user selected.
 // - A button of the toolbar, a key and a link dropped on the canvas trigger a
-//   board action through core.boardActions.trigger(), by its id or by the id
+//   board action through core.boardActions.trigger(), by its Id or by the id
 //   of a role.
 //
 // Each call hands core:
@@ -32,7 +32,7 @@
 // Paste's run: where the menu opens, or the middle of its view for a button or
 // a key (../actions).
 
-import type { CoreApi, Notification, Target } from "@blockr/core";
+import type { BoardActionId, CoreApi, Notification, Target } from "@blockr/core";
 import { useEffect, useMemo, useRef } from "react";
 import { notePoint } from "../actions/index.ts";
 import type { Point } from "../state/index.ts";
@@ -51,9 +51,11 @@ export interface GraphActions {
   // Opens the menu of the target where the user right-clicked, at the point on
   // the screen.
   readonly menu: (target: Target, client: Point) => void;
-  // Triggers the board action with the id given, or the board action that
-  // plays the role with the id given, and resolves once it ends.
-  readonly trigger: (id: string, target: Target, from: TriggeredFrom) => Promise<void>;
+  // Triggers the board action with the Id given, as
+  // core.id("blockr.graph", PASTE), or the board action that plays the role
+  // with the id given, a string, as core.boardActions.trigger() takes them,
+  // and resolves once it ends.
+  readonly trigger: (id: BoardActionId | string, target: Target, from: TriggeredFrom) => Promise<void>;
 }
 
 export interface ActionParts {
@@ -95,7 +97,7 @@ export function graphActions({ core, element, toCanvas, refuse, panel }: ActionP
       // The store refuses the batch, and tells the notifier why.
       return [];
     }
-    return startAt(after, deltas, point);
+    return startAt(after, deltas, point, core);
   };
   const notifierAt = (client: Point) => (notifications: readonly Notification[]) => {
     refuse(client, notifications.map((notification) => notification.message).join("\n"));

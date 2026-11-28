@@ -6,9 +6,14 @@ import type { Board, Json, PluginClassId } from "@blockr/core";
 import { isObject } from "./json.ts";
 import type { Collapse, GraphState, Layout, Move, Moved, Point, StackEntry } from "./types.ts";
 
-// The id of the DAG plugin's class, under which the board holds the DAG's
-// state, at /plugins/blockr.graph-graph_plugin.
-export const GRAPH = "blockr.graph-graph_plugin";
+// The id of the DAG plugin's class. The board holds the DAG's state under its
+// package and its id, at /plugins/blockr.graph/graph_plugin.
+// It is the plain record that JSON holds, rather than core's Id, since only
+// core.id() gives an Id, and the DAG's commands get no CoreApi.
+// The functions of the DAG that take a plugin take this shape, which core's
+// Id fits as well. Where the id goes to a function of core's, the DAG passes
+// core.id(GRAPH.package, GRAPH.id).
+export const GRAPH: Pick<PluginClassId, "package" | "id"> = { package: "blockr.graph", id: "graph_plugin" };
 
 // The state that the store gives a board that holds none for the DAG.
 // It holds no position, so the DAG lays the whole board out as the board
@@ -21,11 +26,11 @@ export const defaultState: GraphState = {
   layout: { direction: "TB", spacing: "normal", placement: "repulsion", snap: false, snap_size: 20 },
 };
 
-// The DAG's state on the board, under the id of the plugin's class, or
-// undefined where the board holds none of its shape, as where the app does
-// not run the DAG.
-export function graphState(board: Board, plugin: PluginClassId = GRAPH): GraphState | undefined {
-  const state = board.plugins[plugin];
+// The DAG's state on the board, under the package and the id of the plugin's
+// class, or undefined where the board holds none of its shape, as where the
+// app does not run the DAG.
+export function graphState(board: Board, plugin: Pick<PluginClassId, "package" | "id"> = GRAPH): GraphState | undefined {
+  const state = board.plugins[plugin.package]?.[plugin.id];
   return isGraphState(state) ? state : undefined;
 }
 

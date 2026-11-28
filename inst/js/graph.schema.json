@@ -7,7 +7,7 @@
       "additionalProperties": {
         "$ref": "#/definitions/Point"
       },
-      "description": "Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run blockr.graph-relayout before placing blocks by hand."
+      "description": "Where each block sits on the canvas, by the block's id: the centre of the block's node, which holds its mark and its name below it. The canvas is no panel or view of the frontend. Set only the blocks to move: every other block keeps its position. Laying the board out again moves every block, so run the command { \"package\": \"blockr.graph\", \"id\": \"relayout\" } before placing blocks by hand."
     },
     "stacks": {
       "type": "object",
@@ -168,7 +168,7 @@
         "snap_size"
       ],
       "additionalProperties": false,
-      "description": "How the DAG arranges the board. Changing the direction or the spacing through blockr.graph-relayout lays the whole board out again."
+      "description": "How the DAG arranges the board. Changing the direction or the spacing through the command { \"package\": \"blockr.graph\", \"id\": \"relayout\" } lays the whole board out again."
     }
   }
 }

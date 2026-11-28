@@ -7,15 +7,15 @@
 //   The nodes that the user moves are the exception: while a drag or a run of
 //   presses of the arrow keys lasts, the DAG keeps their new positions in its
 //   component alone (./moves.ts).
-// - As a drag ends, the DAG runs blockr.graph-change_position once, with
+// - As a drag ends, the DAG runs change_position of blockr.graph once, with
 //   every block and every stack without blocks that moved, so that a drag is
 //   one step. A block that the user drops on the box of another stack joins
-//   that stack through blockr.core-change_stack, in the same step, but on a
-//   locked board.
+//   that stack through change_stack of blockr.core, in the same step, but on
+//   a locked board.
 // - A run of presses of the arrow keys becomes one step once the user pauses,
 //   or once the focus leaves the block.
 // - A drag from a result to an input, or from an input to a result, draws a
-//   link through blockr.core-add_link. The DAG checks nothing while the user
+//   link through add_link of blockr.core. The DAG checks nothing while the user
 //   drags, and shows why the command was refused where the user dropped the
 //   link, taking the command's notifications so that core raises none. A link
 //   dropped on a variadic block's place that a link holds adds nothing, and
@@ -38,8 +38,8 @@
 //   at 100%, once the board's blocks have positions, and keeps the zoom and
 //   the pan for the page (./view.ts). It fits the view again once the user
 //   lays the board out again through Layout, which tells the canvas through
-//   ../actions, as the canvas cannot tell a step of blockr.graph-relayout from
-//   another step.
+//   ../actions, as the canvas cannot tell a step of relayout of blockr.graph
+//   from another step.
 // - React Flow's props are set as the notes of Drawing the DAG give them:
 //   selectNodesOnDrag off, so that a drag selects nothing; edgesFocusable off,
 //   so that the first Tab reaches a block rather than every link first;
@@ -176,8 +176,8 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
   const runKeys = useCallback(() => {
     clearTimeout(keyTimer.current);
     if (drag.current !== null || movesRef.current === NO_MOVES) return;
-    void runMoves(movesBatch(current(), movesRef.current));
-  }, [current, runMoves]);
+    void runMoves(movesBatch(current(), movesRef.current, core));
+  }, [core, current, runMoves]);
   useEffect(
     () => () => {
       clearTimeout(keyTimer.current);
@@ -220,8 +220,8 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
     if (ended === null) return;
     const now = movesRef.current;
     const joined = locked ? new Map<BlockId, string>() : joins(ended.canvas, now, ended.from.keys());
-    void runMoves(movesBatch(current(), now, joined));
-  }, [current, locked, runMoves]);
+    void runMoves(movesBatch(current(), now, core, joined));
+  }, [core, current, locked, runMoves]);
 
   // The selection's changes, which the DAG applies once React Flow has
   // reported every change of one gesture, those of the nodes and those of
@@ -321,7 +321,7 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
         return;
       }
       core.commands
-        .run("blockr.core-add_link", drop.add, "user", {
+        .run(core.id("blockr.core", "add_link"), drop.add, "user", {
           notifier: (notifications: readonly Notification[]) => {
             refuse(notifications.map((notification) => notification.message).join("\n"));
           },
@@ -402,7 +402,7 @@ export function Canvas({ hovered, spread, size, onRefusal }: CanvasProps): React
       onNodeDoubleClick={(_event, node) => {
         if (node.data.kind !== "stack" || node.data.shows === "empty") return;
         core.commands
-          .run("blockr.graph-collapse_stack", { stack: node.data.stack, collapsed: node.data.shows === "expanded" })
+          .run(core.id("blockr.graph", "collapse_stack"), { stack: node.data.stack, collapsed: node.data.shows === "expanded" })
           .catch(() => undefined);
       }}
       onPaneClick={() => {

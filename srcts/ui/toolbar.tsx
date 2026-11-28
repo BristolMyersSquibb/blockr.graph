@@ -30,8 +30,8 @@ import { useReactFlow } from "../flow/index.ts";
 import { canvasOf } from "../geometry/index.ts";
 import { defaultState, graphState } from "../state/index.ts";
 import { useGraph } from "./context.ts";
-import { BOARD_TOOLS, SELECTION_TOOLS, shownTools } from "./tools.ts";
-import type { ShownTool } from "./tools.ts";
+import { BOARD_TOOLS, listedKey, SELECTION_TOOLS, shownTools } from "./tools.ts";
+import type { Listed, ShownTool } from "./tools.ts";
 import { DURATION, fittedView } from "./view.ts";
 
 // How long the pointer rests on a button before its tooltip shows.
@@ -116,9 +116,11 @@ function Control({ label, onPress, pressed, children }: ControlProps): ReactElem
   );
 }
 
-// What tells a tool apart from the others of its group.
+// What tells a tool apart from the others of its group: the entry of the list
+// that names its board action, since two packages may give board actions of
+// one id, or the + of the group.
 function keyOf(tool: ShownTool): string {
-  return tool.kind === "add" ? "add" : tool.action.id;
+  return tool.kind === "add" ? "add" : listedKey(tool.listed);
 }
 
 function ToolView({ tool, target }: { tool: ShownTool; target: Target }): ReactElement {
@@ -130,7 +132,7 @@ function ToolView({ tool, target }: { tool: ShownTool; target: Target }): ReactE
 }
 
 function ActionButton({ action, icon, target }: { action: BoardAction; icon: string; target: Target }): ReactElement {
-  const { actions } = useGraph();
+  const { core, actions } = useGraph();
   return (
     <TooltipTrigger delay={DELAY}>
       <Button
@@ -138,7 +140,7 @@ function ActionButton({ action, icon, target }: { action: BoardAction; icon: str
         className="blockr-graph-control"
         aria-label={action.label}
         onPress={(event) => {
-          if (event.target instanceof HTMLElement) void actions.trigger(action.id, target, { button: event.target });
+          if (event.target instanceof HTMLElement) void actions.trigger(core.id(action.package, action.id), target, { button: event.target });
         }}
       >
         <span className="blockr-graph-action-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: icon }} />
@@ -149,11 +151,20 @@ function ActionButton({ action, icon, target }: { action: BoardAction; icon: str
 }
 
 // A + that pops out a menu of the board actions that it holds, to its right,
-// and triggers the one that the user picks at the +. The DAG's stylesheet
-// moves the menu out to the gap that the panel of search keeps from the
-// toolbar, which blockr.ui's menu takes no offset for.
-function AddButton({ label, actions, target }: { label: string; actions: readonly BoardAction[]; target: Target }): ReactElement {
-  const { actions: graph } = useGraph();
+// and triggers the one that the user picks at the +. Each item is keyed by the
+// entry of the list that names its board action. The DAG's stylesheet moves
+// the menu out to the gap that the panel of search keeps from the toolbar,
+// which blockr.ui's menu takes no offset for.
+function AddButton({
+  label,
+  actions,
+  target,
+}: {
+  label: string;
+  actions: readonly { readonly listed: Listed; readonly action: BoardAction }[];
+  target: Target;
+}): ReactElement {
+  const { core, actions: graph } = useGraph();
   const button = useRef<HTMLButtonElement>(null);
   return (
     <MenuTrigger placement="right top">
@@ -169,13 +180,13 @@ function AddButton({ label, actions, target }: { label: string; actions: readonl
         aria-label={label}
         className="blockr-graph-add-menu"
         onAction={(key) => {
-          const picked = actions.find((action) => action.id === key);
+          const picked = actions.find(({ listed }) => listedKey(listed) === key)?.action;
           const el = button.current;
-          if (picked !== undefined && el !== null) void graph.trigger(picked.id, target, { button: el });
+          if (picked !== undefined && el !== null) void graph.trigger(core.id(picked.package, picked.id), target, { button: el });
         }}
       >
-        {actions.map((action) => (
-          <MenuItem key={action.id} id={action.id}>
+        {actions.map(({ listed, action }) => (
+          <MenuItem key={listedKey(listed)} id={listedKey(listed)}>
             {action.label}
           </MenuItem>
         ))}

@@ -20,14 +20,14 @@ import type { Board, Delta, Patch, PluginClassId } from "@blockr/core";
 import { at, unmovedPatches } from "../patches/index.ts";
 import { isGraphState, patched } from "../state/index.ts";
 
-export function update(delta: Delta, board: Board, plugin: PluginClassId): Patch[] {
+export function update(delta: Delta, board: Board, plugin: Pick<PluginClassId, "package" | "id">): Patch[] {
   const removed = (rm: readonly string[] | undefined, add: object | undefined) =>
     (rm ?? []).filter((id) => add === undefined || !Object.hasOwn(add, id));
   const blocks = removed(delta.blocks?.rm, delta.blocks?.add);
   const stacks = removed(delta.stacks?.rm, delta.stacks?.add);
   if (blocks.length === 0 && stacks.length === 0) return [];
 
-  const stored = board.plugins[plugin];
+  const stored = board.plugins[plugin.package]?.[plugin.id];
   const state = stored === undefined ? undefined : patched(stored, delta.patches ?? [], plugin);
   if (!isGraphState(state)) return [];
   const remove = (part: "positions" | "stacks", id: string): Patch => ({ op: "remove", path: at(plugin, part, id) });

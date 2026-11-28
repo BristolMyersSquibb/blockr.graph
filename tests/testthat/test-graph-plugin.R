@@ -3,7 +3,10 @@ test_that("the DAG plugin is a plugin of its own class", {
   x <- new_graph_plugin()
 
   expect_s3_class(x, c("graph_plugin", "plugin"), exact = TRUE)
-  expect_identical(plugin_class_id(x), "blockr.graph-graph_plugin")
+  expect_identical(
+    plugin_class_id(x),
+    list(package = "blockr.graph", id = "graph_plugin")
+  )
 })
 
 test_that("the DAG's state has version 1 and a schema beside its module", {

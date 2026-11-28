@@ -7,8 +7,8 @@
 //    new ids. The blocks keep their names, and the name of each stack gains
 //    " (copy)", as today's paste has it.
 // 2. The batch holds core's commands that add the blocks, the stacks and the
-//    links, and then blockr.graph-change_position with the positions that the
-//    read board gives them in the DAG's state, moved together so that their
+//    links, and then change_position of blockr.graph with the positions that
+//    the read board gives them in the DAG's state, moved together so that their
 //    middle lands at the point where the user pastes, or at the free spot
 //    nearest it, so that nothing pasted lands on a node or in a stack's box
 //    that the board shows (../placement/free.ts).
@@ -18,7 +18,7 @@
 // that the read board gives no position, as a board copied without the DAG's
 // state would, starts where the placement strategy starts any added block.
 
-import type { BlockId, Board, CommandCall, StackId } from "@blockr/core";
+import type { BlockId, Board, CommandCall, CoreApi, StackId } from "@blockr/core";
 import { bounds, canvasOf } from "../geometry/index.ts";
 import type { Canvas } from "../geometry/index.ts";
 import { freeOffset, shownBoxes } from "../placement/index.ts";
@@ -28,32 +28,34 @@ import type { Point } from "../state/index.ts";
 // What the name of each pasted stack gains.
 const COPY = " (copy)";
 
-// Mints an id that `taken` does not hold, as CoreApi's mintId() does.
-export type Mint = (taken: (id: string) => boolean) => string;
-
 // The batch that pastes the read board onto the board, with the middle of
 // what it pastes at the point, or where it was copied where no point is
 // given. It is empty where the read board holds no block and no stack.
-export function pasteBatch(board: Board, read: Board, point: Point | undefined, mint: Mint): CommandCall[] {
-  const blocks = renamed(Object.keys(read.blocks), board.blocks, mint);
-  const stacks = renamed(Object.keys(read.stacks), board.stacks, mint);
+// It mints each new id with the caller's core.mintId(), and names each
+// command by the Id that its core.id() gives.
+export function pasteBatch(board: Board, read: Board, point: Point | undefined, core: Pick<CoreApi, "id" | "mintId">): CommandCall[] {
+  const blocks = renamed(Object.keys(read.blocks), board.blocks, core);
+  const stacks = renamed(Object.keys(read.stacks), board.stacks, core);
   const pastedLinks = Object.entries(read.links).filter(([, link]) => blocks.has(link.from) && blocks.has(link.to));
   const links = renamed(
     pastedLinks.map(([id]) => id),
     board.links,
-    mint,
+    core,
   );
 
   const batch: CommandCall[] = [];
   for (const [id, block] of Object.entries(read.blocks)) {
+    // A command's args are JSON, which holds the block's registry id as the
+    // plain record of its package and its id.
+    const { package: pkg, id: cls } = block.registry_id;
     batch.push({
-      id: "blockr.core-add_block",
-      args: { registry_id: block.registry_id, id: newId(blocks, id), name: block.name, state: block.state },
+      id: core.id("blockr.core", "add_block"),
+      args: { registry_id: { package: pkg, id: cls }, id: newId(blocks, id), name: block.name, state: block.state },
     });
   }
   for (const [id, stack] of Object.entries(read.stacks)) {
     batch.push({
-      id: "blockr.core-add_stack",
+      id: core.id("blockr.core", "add_stack"),
       args: {
         id: newId(stacks, id),
         name: `${stack.name}${COPY}`,
@@ -64,7 +66,7 @@ export function pasteBatch(board: Board, read: Board, point: Point | undefined, 
   }
   for (const [id, link] of pastedLinks) {
     batch.push({
-      id: "blockr.core-add_link",
+      id: core.id("blockr.core", "add_link"),
       args: {
         id: newId(links, id),
         from: newId(blocks, link.from),
@@ -74,17 +76,17 @@ export function pasteBatch(board: Board, read: Board, point: Point | undefined, 
     });
   }
   const moved = positionsOf(board, read, blocks, stacks, point);
-  if (moved !== undefined) batch.push({ id: "blockr.graph-change_position", args: moved });
+  if (moved !== undefined) batch.push({ id: core.id("blockr.graph", "change_position"), args: moved });
   return batch;
 }
 
 // The new id of each of the ids given, minted so that it is taken neither in
 // the board's collection nor by another id of the paste.
-function renamed(ids: readonly string[], collection: Readonly<Record<string, unknown>>, mint: Mint): Map<string, string> {
+function renamed(ids: readonly string[], collection: Readonly<Record<string, unknown>>, core: Pick<CoreApi, "mintId">): Map<string, string> {
   const minted = new Map<string, string>();
   const taken = new Set<string>();
   for (const id of ids) {
-    const next = mint((candidate) => Object.hasOwn(collection, candidate) || taken.has(candidate));
+    const next = core.mintId((candidate) => Object.hasOwn(collection, candidate) || taken.has(candidate));
     taken.add(next);
     minted.set(id, next);
   }
@@ -97,7 +99,7 @@ function newId(ids: ReadonlyMap<string, string>, id: string): string {
   return minted;
 }
 
-// The args of blockr.graph-change_position for what the paste adds: the
+// The args of change_position of blockr.graph for what the paste adds: the
 // positions that the read board gives the pasted blocks and the pasted
 // stacks that hold no block, moved together so that the middle of their
 // bounds lands at the point, or at the free spot on the board nearest it.

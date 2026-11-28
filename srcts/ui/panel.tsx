@@ -42,7 +42,7 @@
 // closes it as well, unless it is pinned. A pinned panel closes as well once
 // what its advanced action is about leaves the board.
 
-import type { BlockId, Board, BoardObject, CoreApi, Delta, FrontendModule, Target } from "@blockr/core";
+import type { BlockId, Board, BoardActionId, BoardObject, CoreApi, Delta, FrontendModule, Target } from "@blockr/core";
 import { Button, ToggleButton } from "@blockr/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
@@ -360,7 +360,7 @@ function drawnOf(el: HTMLElement, object: BoardObject, stacks: ReadonlyMap<Block
 
 // The one board object that the deltas add for which a menu offers the board
 // action, or undefined where they add none or several.
-function addedTarget(core: CoreApi, action: string, deltas: readonly Delta[] | undefined): BoardObject | undefined {
+function addedTarget(core: CoreApi, action: BoardActionId, deltas: readonly Delta[] | undefined): BoardObject | undefined {
   if (deltas === undefined) return undefined;
   const added: BoardObject[] = deltas.flatMap((delta) => [
     ...Object.keys(delta.blocks?.add ?? {}).map((block) => ({ block })),
@@ -371,9 +371,11 @@ function addedTarget(core: CoreApi, action: string, deltas: readonly Delta[] | u
   return offered.length === 1 ? offered[0] : undefined;
 }
 
-// Whether a menu of the target offers the board action with the id given.
-function offers(core: CoreApi, target: Target, action: string): boolean {
-  return core.boardActions.on(target).some((each) => each.id === action);
+// Whether a menu of the target offers the board action with the Id given, as
+// core hands it the panel. Each board action that on() gives has its package
+// and its id within the package, which core.id() makes the Id of.
+function offers(core: CoreApi, target: Target, action: BoardActionId): boolean {
+  return core.boardActions.on(target).some((each) => core.id(each.package, each.id) === action);
 }
 
 // Whether the board holds every block, link and stack that the target names.

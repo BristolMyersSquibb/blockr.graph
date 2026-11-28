@@ -4,11 +4,11 @@
 import { describe, expect, test } from "vitest";
 import { defaultState, GRAPH, isGraphState, patched, pointer } from "./index.ts";
 
-const at = (path: string) => `/plugins/${GRAPH}${path}`;
+const at = (path: string) => `/plugins/${GRAPH.package}/${GRAPH.id}${path}`;
 
 describe("the JSON Patch of the DAG's state", () => {
   test("writes a pointer to a key with a slash or a tilde in it", () => {
-    expect(pointer(["plugins", GRAPH, "positions", "a/b~c"])).toBe(`/plugins/${GRAPH}/positions/a~1b~0c`);
+    expect(pointer(["plugins", GRAPH.package, GRAPH.id, "positions", "a/b~c"])).toBe("/plugins/blockr.graph/graph_plugin/positions/a~1b~0c");
   });
 
   test("applies the patches of the plugin in order, and skips those of others", () => {
@@ -17,7 +17,10 @@ describe("the JSON Patch of the DAG's state", () => {
       [
         { op: "add", path: at("/positions/a~1b"), value: { x: 1, y: 2 } },
         { op: "replace", path: at("/positions/a~1b"), value: { x: 3, y: 4 } },
-        { op: "add", path: "/plugins/other/positions/c", value: 1 },
+        // Another class of the DAG's package, and a class of the DAG's id in
+        // another package.
+        { op: "add", path: "/plugins/blockr.graph/other_plugin/positions/c", value: 1 },
+        { op: "add", path: "/plugins/other/graph_plugin/positions/c", value: 1 },
         { op: "replace", path: at("/layout/snap"), value: true },
       ],
       GRAPH,
