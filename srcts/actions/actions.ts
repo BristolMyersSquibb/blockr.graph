@@ -131,7 +131,7 @@ export const graphBoardActions: readonly Omit<BoardAction, "package">[] = [
         else tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
         return undefined;
       }
-      const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken), core);
+      const batch = pasteBatch(core.store.board(), read.board, point, core);
       if (batch.length > 0) return batch;
       if (!read.dropped.some((dropped) => "block" in dropped.about)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
       return undefined;

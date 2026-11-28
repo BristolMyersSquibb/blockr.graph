@@ -1143,14 +1143,14 @@ function placeAdded(canvas, added, moved, layout, placement = layout.placement) 
 
 // srcts/actions/paste.ts
 var COPY = " (copy)";
-function pasteBatch(board, read, point, mint, core) {
-  const blocks = renamed(Object.keys(read.blocks), board.blocks, mint);
-  const stacks = renamed(Object.keys(read.stacks), board.stacks, mint);
+function pasteBatch(board, read, point, core) {
+  const blocks = renamed(Object.keys(read.blocks), board.blocks, core);
+  const stacks = renamed(Object.keys(read.stacks), board.stacks, core);
   const pastedLinks = Object.entries(read.links).filter(([, link]) => blocks.has(link.from) && blocks.has(link.to));
   const links = renamed(
     pastedLinks.map(([id]) => id),
     board.links,
-    mint
+    core
   );
   const batch = [];
   for (const [id, block] of Object.entries(read.blocks)) {
@@ -1186,11 +1186,11 @@ function pasteBatch(board, read, point, mint, core) {
   if (moved !== void 0) batch.push({ id: core.id("blockr.graph", "change_position"), args: moved });
   return batch;
 }
-function renamed(ids, collection, mint) {
+function renamed(ids, collection, core) {
   const minted = /* @__PURE__ */ new Map();
   const taken = /* @__PURE__ */ new Set();
   for (const id of ids) {
-    const next = mint((candidate) => Object.hasOwn(collection, candidate) || taken.has(candidate));
+    const next = core.mintId((candidate) => Object.hasOwn(collection, candidate) || taken.has(candidate));
     taken.add(next);
     minted.set(id, next);
   }
@@ -1293,7 +1293,7 @@ var graphBoardActions = [
         else tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
         return void 0;
       }
-      const batch = pasteBatch(core.store.board(), read.board, point, (taken) => core.mintId(taken), core);
+      const batch = pasteBatch(core.store.board(), read.board, point, core);
       if (batch.length > 0) return batch;
       if (!read.dropped.some((dropped) => "block" in dropped.about)) tell("message", NOTHING_TO_PASTE, "nothing_to_paste");
       return void 0;

@@ -28,21 +28,19 @@ import type { Point } from "../state/index.ts";
 // What the name of each pasted stack gains.
 const COPY = " (copy)";
 
-// Mints an id that `taken` does not hold, as CoreApi's mintId() does.
-export type Mint = (taken: (id: string) => boolean) => string;
-
 // The batch that pastes the read board onto the board, with the middle of
 // what it pastes at the point, or where it was copied where no point is
 // given. It is empty where the read board holds no block and no stack.
-// It names each command by the Id that the caller's core.id() gives.
-export function pasteBatch(board: Board, read: Board, point: Point | undefined, mint: Mint, core: Pick<CoreApi, "id">): CommandCall[] {
-  const blocks = renamed(Object.keys(read.blocks), board.blocks, mint);
-  const stacks = renamed(Object.keys(read.stacks), board.stacks, mint);
+// It mints each new id with the caller's core.mintId(), and names each
+// command by the Id that its core.id() gives.
+export function pasteBatch(board: Board, read: Board, point: Point | undefined, core: Pick<CoreApi, "id" | "mintId">): CommandCall[] {
+  const blocks = renamed(Object.keys(read.blocks), board.blocks, core);
+  const stacks = renamed(Object.keys(read.stacks), board.stacks, core);
   const pastedLinks = Object.entries(read.links).filter(([, link]) => blocks.has(link.from) && blocks.has(link.to));
   const links = renamed(
     pastedLinks.map(([id]) => id),
     board.links,
-    mint,
+    core,
   );
 
   const batch: CommandCall[] = [];
@@ -84,11 +82,11 @@ export function pasteBatch(board: Board, read: Board, point: Point | undefined, 
 
 // The new id of each of the ids given, minted so that it is taken neither in
 // the board's collection nor by another id of the paste.
-function renamed(ids: readonly string[], collection: Readonly<Record<string, unknown>>, mint: Mint): Map<string, string> {
+function renamed(ids: readonly string[], collection: Readonly<Record<string, unknown>>, core: Pick<CoreApi, "mintId">): Map<string, string> {
   const minted = new Map<string, string>();
   const taken = new Set<string>();
   for (const id of ids) {
-    const next = mint((candidate) => Object.hasOwn(collection, candidate) || taken.has(candidate));
+    const next = core.mintId((candidate) => Object.hasOwn(collection, candidate) || taken.has(candidate));
     taken.add(next);
     minted.set(id, next);
   }
